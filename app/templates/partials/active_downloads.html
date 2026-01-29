@@ -1,0 +1,41 @@
+{% for download in downloads %}
+<div class="px-5 py-4 flex items-center space-x-4">
+    <div class="flex-shrink-0 w-12 h-12 bg-dark-surface rounded overflow-hidden">
+        {% if download.album and download.album.image_url %}
+        <img src="{{ download.album.image_url }}" alt="{{ download.album.name }}" class="w-full h-full object-cover">
+        {% else %}
+        <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+            </svg>
+        </div>
+        {% endif %}
+    </div>
+    <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium truncate">
+            {% if download.album %}
+                {{ download.album.name }}
+            {% elif download.title %}
+                {{ download.title }}
+            {% else %}
+                Unknown Album
+            {% endif %}
+        </p>
+        <p class="text-xs text-gray-400 truncate">
+            {% if download.album and download.album.artist %}
+                {{ download.album.artist.name }}
+            {% elif download.artist_name %}
+                {{ download.artist_name }}
+            {% else %}
+                Unknown Artist
+            {% endif %}
+        </p>
+    </div>
+    <div class="flex-shrink-0 w-32">
+        <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div class="h-full transition-all duration-300 {% if download.status.value == 'downloading' %}bg-blue-500 animate-pulse{% elif download.status.value == 'completed' %}bg-green-500{% elif download.status.value == 'failed' %}bg-red-500{% else %}bg-gray-500{% endif %}" style="width: {{ download.progress or 0 }}%"></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1 text-center">{{ download.status.value|title }}</p>
+    </div>
+</div>
+{% endfor %}

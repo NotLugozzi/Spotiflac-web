@@ -1,0 +1,33 @@
+<div class="bg-dark-card rounded-lg p-4 hover:bg-dark-hover transition-colors group cursor-pointer"
+     hx-get="/albums/{{ album.id }}"
+     hx-target="body"
+     hx-push-url="true">
+    <div class="aspect-square rounded-md overflow-hidden mb-4 bg-gray-800">
+        {% if album.cover_url %}
+        <img src="{{ album.cover_url }}" alt="{{ album.title }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+        {% else %}
+        <div class="w-full h-full flex items-center justify-center">
+            <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+            </svg>
+        </div>
+        {% endif %}
+    </div>
+    <h3 class="font-semibold truncate">{{ album.title }}</h3>
+    <p class="text-sm text-gray-400">
+        {% if album.artist %}
+        {{ album.artist.name }}
+        {% endif %}
+        {% if album.year %}
+        <span class="ml-1">• {{ album.year }}</span>
+        {% endif %}
+    </p>
+    <div class="mt-2 flex items-center gap-2 text-xs">
+        <span class="px-2 py-1 rounded bg-gray-700">
+            {{ album.track_count or 0 }} track{% if album.track_count != 1 %}s{% endif %}
+        </span>
+        {% if album.spotify_id %}
+        <span class="text-spotify-green">● Spotify</span>
+        {% endif %}
+    </div>
+</div>

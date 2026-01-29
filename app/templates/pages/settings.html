@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <h1 class="text-2xl font-bold">Settings</h1>
+    
+    <!-- Status Overview -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-dark-card rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400">Spotify API</p>
+                    <p class="font-medium mt-1">
+                        {% if spotify_connected %}
+                        <span class="text-spotify-green">Connected</span>
+                        {% elif spotify_configured %}
+                        <span class="text-yellow-400">Configured</span>
+                        {% else %}
+                        <span class="text-red-400">Not Configured</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="p-3 rounded-lg {% if spotify_connected %}bg-spotify-green/20{% else %}bg-red-600/20{% endif %}">
+                    <svg class="w-6 h-6 {% if spotify_connected %}text-spotify-green{% else %}text-red-400{% endif %}" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-dark-card rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400">SpotiFLAC</p>
+                    <p class="font-medium mt-1">
+                        {% if spotiflac_available %}
+                        <span class="text-spotify-green">Available</span>
+                        {% else %}
+                        <span class="text-red-400">Not Found</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="p-3 rounded-lg {% if spotiflac_available %}bg-spotify-green/20{% else %}bg-red-600/20{% endif %}">
+                    <svg class="w-6 h-6 {% if spotiflac_available %}text-spotify-green{% else %}text-red-400{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-dark-card rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400">Library Path</p>
+                    <p class="font-medium mt-1 text-sm truncate max-w-[180px]">{{ settings.music_library_path }}</p>
+                </div>
+                <div class="p-3 bg-blue-600/20 rounded-lg">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Spotify Configuration -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold">Spotify API Configuration</h2>
+                    <p class="text-sm text-gray-400 mt-1">Configure your Spotify API credentials (optional)</p>
+                </div>
+                <span class="px-2 py-1 text-xs rounded-full bg-blue-900/50 text-blue-300">Optional</span>
+            </div>
+        </div>
+        
+        <div class="p-5 space-y-4">
+            <div class="bg-blue-900/20 border border-blue-800/50 rounded-lg p-4">
+                <div class="flex gap-3">
+                    <svg class="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <div>
+                        <p class="font-medium text-blue-300">Spotify API is optional</p>
+                        <p class="text-sm text-blue-200/70 mt-1">
+                            Without Spotify API credentials, you can still:
+                        </p>
+                        <ul class="text-sm text-blue-200/70 mt-2 space-y-1 list-disc list-inside">
+                            <li>Download music using <strong>Direct URL input</strong> on the Search page</li>
+                            <li>Manage your existing local music library</li>
+                            <li>Scan and organize your music files</li>
+                        </ul>
+                        <p class="text-sm text-blue-200/70 mt-2">
+                            Spotify API enables: automatic artist/album matching, metadata fetching, and search integration.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-dark-surface rounded-lg p-4">
+                <h3 class="font-medium mb-2">How to get Spotify API credentials</h3>
+                <ol class="text-sm text-gray-400 space-y-2 list-decimal list-inside">
+                    <li>Go to <a href="https://developer.spotify.com/dashboard" target="_blank" class="text-spotify-green hover:underline">Spotify Developer Dashboard</a></li>
+                    <li>Log in with your Spotify account</li>
+                    <li>Click "Create app"</li>
+                    <li>Fill in the app name and description</li>
+                    <li>Copy the Client ID and Client Secret</li>
+                    <li>Add them to your <code class="px-1 py-0.5 bg-dark-card rounded">.env</code> file</li>
+                </ol>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Client ID</label>
+                    <input 
+                        type="text" 
+                        value="{{ '••••••••' if settings.spotify_client_id else '' }}"
+                        disabled
+                        class="w-full px-4 py-2 bg-dark-surface border border-gray-700 rounded-lg text-gray-400"
+                        placeholder="Set via SPOTIFY_CLIENT_ID env var"
+                    >
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Client Secret</label>
+                    <input 
+                        type="password" 
+                        value="{{ '••••••••' if settings.spotify_client_secret else '' }}"
+                        disabled
+                        class="w-full px-4 py-2 bg-dark-surface border border-gray-700 rounded-lg text-gray-400"
+                        placeholder="Set via SPOTIFY_CLIENT_SECRET env var"
+                    >
+                </div>
+            </div>
+            
+            <p class="text-xs text-gray-500">
+                * Credentials are configured via environment variables for security. 
+                Edit your <code class="px-1 py-0.5 bg-dark-surface rounded">.env</code> file to update them.
+            </p>
+        </div>
+    </div>
+    
+    <!-- SpotiFLAC Configuration -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold">SpotiFLAC Configuration</h2>
+            <p class="text-sm text-gray-400 mt-1">Download settings for SpotiFLAC</p>
+        </div>
+        
+        <div class="p-5 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Download Path</label>
+                    <input 
+                        type="text" 
+                        value="{{ settings.download_path }}"
+                        disabled
+                        class="w-full px-4 py-2 bg-dark-surface border border-gray-700 rounded-lg"
+                    >
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Services (Priority Order)</label>
+                    <input 
+                        type="text" 
+                        value="{{ settings.spotiflac_service }}"
+                        disabled
+                        class="w-full px-4 py-2 bg-dark-surface border border-gray-700 rounded-lg"
+                    >
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Filename Format</label>
+                <input 
+                    type="text" 
+                    value="{{ settings.spotiflac_filename_format }}"
+                    disabled
+                    class="w-full px-4 py-2 bg-dark-surface border border-gray-700 rounded-lg font-mono text-sm"
+                >
+                <p class="text-xs text-gray-500 mt-1">
+                    Available: {title}, {artist}, {album}, {track_number}, {year}, {isrc}
+                </p>
+            </div>
+            
+            <div class="flex items-center space-x-6">
+                <label class="flex items-center">
+                    <input 
+                        type="checkbox" 
+                        {% if settings.spotiflac_use_artist_subfolders %}checked{% endif %}
+                        disabled
+                        class="w-4 h-4 bg-dark-surface border-gray-700 rounded text-spotify-green focus:ring-spotify-green"
+                    >
+                    <span class="ml-2 text-sm">Use artist subfolders</span>
+                </label>
+                <label class="flex items-center">
+                    <input 
+                        type="checkbox" 
+                        {% if settings.spotiflac_use_album_subfolders %}checked{% endif %}
+                        disabled
+                        class="w-4 h-4 bg-dark-surface border-gray-700 rounded text-spotify-green focus:ring-spotify-green"
+                    >
+                    <span class="ml-2 text-sm">Use album subfolders</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Library Configuration -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold">Library Settings</h2>
+            <p class="text-sm text-gray-400 mt-1">Configure library scanning and monitoring</p>
+        </div>
+        
+        <div class="p-5 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Music Library Path(s)</label>
+                <input 
+                    type="text" 
+                    value="{{ settings.music_library_path }}"
+                    disabled
+                    class="w-full px-4 py-2 bg-dark-surface border border-gray-700 rounded-lg"
+                >
+                <p class="text-xs text-gray-500 mt-1">Separate multiple paths with commas</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Scan Interval (minutes)</label>
+                    <input 
+                        type="number" 
+                        value="{{ settings.scan_interval_minutes }}"
+                        disabled
+                        class="w-full px-4 py-2 bg-dark-surface border border-gray-700 rounded-lg"
+                    >
+                </div>
+                <div class="flex items-center">
+                    <label class="flex items-center">
+                        <input 
+                            type="checkbox" 
+                            {% if settings.auto_scan_on_startup %}checked{% endif %}
+                            disabled
+                            class="w-4 h-4 bg-dark-surface border-gray-700 rounded text-spotify-green focus:ring-spotify-green"
+                        >
+                        <span class="ml-2 text-sm">Auto-scan on startup</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Environment Variables Reference -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold">Environment Variables Reference</h2>
+            <p class="text-sm text-gray-400 mt-1">All available configuration options</p>
+        </div>
+        
+        <div class="p-5">
+            <div class="bg-dark-surface rounded-lg p-4 overflow-x-auto">
+                <pre class="text-sm text-gray-300 font-mono whitespace-pre">
+# Spotify API
+SPOTIFY_CLIENT_ID=your-client-id
+SPOTIFY_CLIENT_SECRET=your-client-secret
+
+# Paths
+MUSIC_LIBRARY_PATH=/path/to/music
+DOWNLOAD_PATH=/path/to/downloads
+
+# SpotiFLAC
+SPOTIFLAC_SERVICE=tidal,qobuz,deezer
+SPOTIFLAC_FILENAME_FORMAT={artist}/{album}/{track_number} - {title}
+SPOTIFLAC_USE_ARTIST_SUBFOLDERS=true
+SPOTIFLAC_USE_ALBUM_SUBFOLDERS=true
+SPOTIFLAC_RETRY_MINUTES=30
+
+# Scanning
+SCAN_INTERVAL_MINUTES=60
+AUTO_SCAN_ON_STARTUP=true
+
+# Security (optional)
+AUTH_USERNAME=admin
+AUTH_PASSWORD=changeme
+SECRET_KEY=your-secret-key</pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

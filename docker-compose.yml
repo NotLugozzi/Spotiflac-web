@@ -1,0 +1,51 @@
+services:
+  spotiflac-autowatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spotiflac-web
+    restart: unless-stopped
+    ports:
+      - "7233:8080"
+    environment:
+      - APP_NAME=Spotiflac web
+      - APP_ENV=production
+      - DEBUG=false
+      - SECRET_KEY=
+      
+      - SPOTIFY_CLIENT_ID=
+      - SPOTIFY_CLIENT_SECRET=
+      
+      - MUSIC_LIBRARY_PATH=/music
+      - DOWNLOAD_PATH=/downloads
+      
+      - DATABASE_URL=sqlite:///./data/spotiflac.db
+      
+      - SPOTIFLAC_SERVICE=${SPOTIFLAC_SERVICE:-tidal,qobuz,deezer}
+      - SPOTIFLAC_FILENAME_FORMAT=${SPOTIFLAC_FILENAME_FORMAT:-{artist}/{album}/{track_number} - {title}}
+      - SPOTIFLAC_USE_ARTIST_SUBFOLDERS=${SPOTIFLAC_USE_ARTIST_SUBFOLDERS:-true}
+      - SPOTIFLAC_USE_ALBUM_SUBFOLDERS=${SPOTIFLAC_USE_ALBUM_SUBFOLDERS:-true}
+      - SPOTIFLAC_RETRY_MINUTES=${SPOTIFLAC_RETRY_MINUTES:-30}
+      - SCAN_INTERVAL_MINUTES=${SCAN_INTERVAL_MINUTES:-60}
+      - AUTO_SCAN_ON_STARTUP=${AUTO_SCAN_ON_STARTUP:-true}
+      
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - AUTH_USERNAME=${AUTH_USERNAME:-admin}
+      - AUTH_PASSWORD=${AUTH_PASSWORD:-changeme}
+
+    volumes:
+      - ./data:/app/data
+      - /music:/music:ro
+      - /downloads:/downloads
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

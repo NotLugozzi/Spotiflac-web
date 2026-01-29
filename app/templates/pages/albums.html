@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Albums - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 class="text-2xl font-bold">Albums</h1>
+        
+        <!-- Search & Filters -->
+        <div class="flex items-center space-x-3">
+            <form action="/albums" method="GET" class="flex items-center space-x-2">
+                <div class="relative">
+                    <input 
+                        type="text" 
+                        name="search" 
+                        value="{{ search or '' }}"
+                        placeholder="Search albums..." 
+                        class="w-48 px-4 py-2 pl-10 text-sm bg-dark-card border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green"
+                    >
+                    <svg class="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+                
+                <select 
+                    name="filter" 
+                    onchange="this.form.submit()"
+                    class="px-3 py-2 text-sm bg-dark-card border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green"
+                >
+                    <option value="" {% if not filter %}selected{% endif %}>All Albums</option>
+                    <option value="owned" {% if filter == 'owned' %}selected{% endif %}>Owned</option>
+                    <option value="wanted" {% if filter == 'wanted' %}selected{% endif %}>Wanted</option>
+                    <option value="missing" {% if filter == 'missing' %}selected{% endif %}>Missing</option>
+                </select>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Albums Grid -->
+    {% if albums %}
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {% for album in albums %}
+        <a href="/albums/{{ album.id }}" class="group bg-dark-card rounded-xl p-4 hover:bg-dark-hover transition-all duration-200">
+            <div class="aspect-square bg-dark-surface rounded-lg overflow-hidden shadow-lg relative mb-3">
+                {% if album.image_url %}
+                <img src="{{ album.image_url }}" alt="{{ album.name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200">
+                {% else %}
+                <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                    <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+                    </svg>
+                </div>
+                {% endif %}
+                
+                <!-- Status badge -->
+                {% if album.is_owned %}
+                <span class="absolute top-2 right-2 px-2 py-0.5 text-xs bg-spotify-green text-black rounded font-medium">Owned</span>
+                {% elif album.is_wanted %}
+                <span class="absolute top-2 right-2 px-2 py-0.5 text-xs bg-yellow-500 text-black rounded font-medium">Wanted</span>
+                {% endif %}
+            </div>
+            
+            <div>
+                <p class="font-medium truncate group-hover:text-white transition-colors">{{ album.name }}</p>
+                <p class="text-sm text-gray-400 truncate">{{ album.artist.name if album.artist else 'Unknown Artist' }}</p>
+                <p class="text-xs text-gray-500 mt-1">{{ album.release_date[:4] if album.release_date else 'Unknown' }} • {{ album.total_tracks or '?' }} tracks</p>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    
+    <!-- Pagination -->
+    {% if pages > 1 %}
+    <div class="flex justify-center items-center space-x-2">
+        {% if page > 1 %}
+        <a href="/albums?page={{ page - 1 }}{% if search %}&search={{ search }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" 
+           class="px-4 py-2 bg-dark-card border border-gray-700 rounded-lg hover:bg-dark-hover transition-colors">
+            Previous
+        </a>
+        {% endif %}
+        
+        <span class="px-4 py-2 text-gray-400">Page {{ page }} of {{ pages }}</span>
+        
+        {% if page < pages %}
+        <a href="/albums?page={{ page + 1 }}{% if search %}&search={{ search }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" 
+           class="px-4 py-2 bg-dark-card border border-gray-700 rounded-lg hover:bg-dark-hover transition-colors">
+            Next
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <!-- Empty State -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-12 text-center">
+        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+        </svg>
+        <h3 class="text-lg font-medium mb-2">No albums found</h3>
+        {% if search or filter %}
+        <p class="text-gray-400 mb-4">No albums match your current filters</p>
+        <a href="/albums" class="text-spotify-green hover:underline">Clear filters</a>
+        {% else %}
+        <p class="text-gray-400 mb-4">Scan your library to discover albums</p>
+        <button 
+            hx-post="/api/library/scan"
+            hx-swap="none"
+            class="px-6 py-2 bg-spotify-green text-black font-medium rounded-full hover:bg-green-400 transition-colors"
+        >
+            Scan Library
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

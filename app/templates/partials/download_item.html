@@ -1,0 +1,70 @@
+<div class="bg-dark-card rounded-lg p-4 flex items-center gap-4" id="download-{{ download.id }}">
+    <div class="w-12 h-12 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
+        {% if download.status.value == 'completed' %}
+        <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        {% elif download.status.value == 'failed' %}
+        <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+        {% elif download.status.value == 'downloading' %}
+        <svg class="w-6 h-6 text-spotify-green animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+        {% else %}
+        <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        {% endif %}
+    </div>
+    
+    <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+            <span class="font-medium truncate">{{ download.title or download.spotify_id }}</span>
+            <span class="px-2 py-0.5 rounded text-xs 
+                {% if download.status.value == 'completed' %}bg-green-900 text-green-300
+                {% elif download.status.value == 'failed' %}bg-red-900 text-red-300
+                {% elif download.status.value == 'downloading' %}bg-blue-900 text-blue-300
+                {% else %}bg-gray-700 text-gray-300{% endif %}">
+                {{ download.status.value }}
+            </span>
+        </div>
+        <p class="text-sm text-gray-400 truncate">
+            {{ download.artist_name or 'Unknown Artist' }}
+            {% if download.album_name %} • {{ download.album_name }}{% endif %}
+        </p>
+        {% if download.status.value == 'downloading' and download.progress %}
+        <div class="mt-2 w-full bg-gray-700 rounded-full h-2">
+            <div class="bg-spotify-green h-2 rounded-full transition-all duration-300" style="width: {{ download.progress }}%"></div>
+        </div>
+        {% endif %}
+        {% if download.error_message %}
+        <p class="text-sm text-red-400 mt-1">{{ download.error_message }}</p>
+        {% endif %}
+    </div>
+    
+    <div class="flex items-center gap-2 flex-shrink-0">
+        {% if download.status.value == 'pending' %}
+        <button hx-delete="/api/downloads/{{ download.id }}"
+                hx-target="#download-{{ download.id }}"
+                hx-swap="outerHTML"
+                class="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                title="Cancel">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+        {% elif download.status.value == 'failed' %}
+        <button hx-post="/api/downloads/{{ download.id }}/retry"
+                hx-target="#download-{{ download.id }}"
+                hx-swap="outerHTML"
+                class="p-2 text-gray-400 hover:text-spotify-green transition-colors"
+                title="Retry">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+        </button>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Search - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <!-- Search Header -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-6">
+        <form action="/search" method="GET" class="max-w-2xl mx-auto">
+            <div class="relative">
+                <input 
+                    type="text" 
+                    name="q" 
+                    value="{{ query or '' }}"
+                    placeholder="Search for artists, albums..." 
+                    autofocus
+                    class="w-full px-6 py-4 pl-14 text-lg bg-dark-surface border border-gray-700 rounded-full focus:outline-none focus:border-spotify-green"
+                >
+                <svg class="absolute left-5 top-5 w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <button type="submit" class="absolute right-3 top-2 px-6 py-2 bg-spotify-green text-black font-medium rounded-full hover:bg-green-400 transition-colors">
+                    Search
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    {% if query %}
+    <!-- Local Library Results -->
+    {% if results.artists or results.albums %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold">In Your Library</h2>
+        </div>
+        
+        <div class="p-4 space-y-4">
+            <!-- Local Artists -->
+            {% if results.artists %}
+            <div>
+                <h3 class="text-sm font-medium text-gray-400 mb-3">Artists</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {% for artist in results.artists %}
+                    <a href="/artists/{{ artist.id }}" class="group bg-dark-surface rounded-lg p-3 hover:bg-dark-hover transition-colors">
+                        <div class="aspect-square bg-dark-card rounded-full overflow-hidden mb-2 mx-auto" style="max-width: 80px;">
+                            {% if artist.image_url %}
+                            <img src="{{ artist.image_url }}" alt="{{ artist.name }}" class="w-full h-full object-cover">
+                            {% else %}
+                            <div class="w-full h-full flex items-center justify-center">
+                                <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm font-medium text-center truncate">{{ artist.name }}</p>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Local Albums -->
+            {% if results.albums %}
+            <div>
+                <h3 class="text-sm font-medium text-gray-400 mb-3">Albums</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {% for album in results.albums %}
+                    <a href="/albums/{{ album.id }}" class="group bg-dark-surface rounded-lg p-3 hover:bg-dark-hover transition-colors">
+                        <div class="aspect-square bg-dark-card rounded overflow-hidden mb-2">
+                            {% if album.image_url %}
+                            <img src="{{ album.image_url }}" alt="{{ album.name }}" class="w-full h-full object-cover">
+                            {% else %}
+                            <div class="w-full h-full flex items-center justify-center">
+                                <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13"/>
+                                </svg>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm font-medium truncate">{{ album.name }}</p>
+                        <p class="text-xs text-gray-400 truncate">{{ album.artist.name if album.artist else '' }}</p>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Spotify API Not Configured Notice -->
+    {% if not spotify_configured %}
+    <div class="bg-yellow-900/30 border border-yellow-700/50 rounded-xl p-4 flex items-start gap-3">
+        <svg class="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div>
+            <p class="font-medium text-yellow-300">Spotify API not configured</p>
+            <p class="text-sm text-yellow-200/70 mt-1">
+                Search results are limited to your local library. To search Spotify, add your API credentials in Settings.
+                You can still use the <strong>Direct URL Download</strong> feature below to download music.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Spotify Results -->
+    {% if results.spotify_artists or results.spotify_albums %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800 flex items-center">
+            <svg class="w-5 h-5 text-spotify-green mr-2" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            <h2 class="text-lg font-semibold">From Spotify</h2>
+        </div>
+        
+        <div class="p-4 space-y-4">
+            <!-- Spotify Artists -->
+            {% if results.spotify_artists %}
+            <div>
+                <h3 class="text-sm font-medium text-gray-400 mb-3">Artists</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {% for artist in results.spotify_artists %}
+                    <div class="group bg-dark-surface rounded-lg p-3">
+                        <div class="aspect-square bg-dark-card rounded-full overflow-hidden mb-2 mx-auto" style="max-width: 80px;">
+                            {% if artist.image_url %}
+                            <img src="{{ artist.image_url }}" alt="{{ artist.name }}" class="w-full h-full object-cover">
+                            {% else %}
+                            <div class="w-full h-full flex items-center justify-center">
+                                <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm font-medium text-center truncate mb-2">{{ artist.name }}</p>
+                        <a 
+                            href="{{ artist.spotify_url }}" 
+                            target="_blank" 
+                            class="block text-center text-xs text-spotify-green hover:underline"
+                        >
+                            Open in Spotify
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Spotify Albums -->
+            {% if results.spotify_albums %}
+            <div>
+                <h3 class="text-sm font-medium text-gray-400 mb-3">Albums</h3>
+                <div class="space-y-2">
+                    {% for album in results.spotify_albums %}
+                    <div class="flex items-center bg-dark-surface rounded-lg p-3 hover:bg-dark-hover transition-colors">
+                        <div class="flex-shrink-0 w-14 h-14 bg-dark-card rounded overflow-hidden mr-4">
+                            {% if album.image_url %}
+                            <img src="{{ album.image_url }}" alt="{{ album.name }}" class="w-full h-full object-cover">
+                            {% else %}
+                            <div class="w-full h-full flex items-center justify-center">
+                                <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13"/>
+                                </svg>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">{{ album.name }}</p>
+                            <p class="text-sm text-gray-400 truncate">{{ album.artist_name }}</p>
+                            <p class="text-xs text-gray-500">{{ album.release_date[:4] if album.release_date else '' }} • {{ album.total_tracks or '?' }} tracks</p>
+                        </div>
+                        
+                        <div class="flex-shrink-0 flex items-center space-x-2">
+                            <button 
+                                hx-post="/api/downloads/url"
+                                hx-vals='{"url": "{{ album.spotify_url }}", "title": "{{ album.name }}", "artist_name": "{{ album.artist_name }}"}'
+                                hx-swap="none"
+                                hx-on::after-request="if(event.detail.successful) { this.disabled = true; this.textContent = 'Queued'; this.classList.add('bg-green-900', 'text-green-300'); this.classList.remove('bg-spotify-green', 'text-black'); }"
+                                class="px-3 py-1.5 text-xs bg-spotify-green text-black rounded-lg hover:bg-green-400 transition-colors font-medium"
+                            >
+                                Download
+                            </button>
+                            <a 
+                                href="{{ album.spotify_url }}" 
+                                target="_blank" 
+                                class="px-3 py-1.5 text-xs bg-dark-card rounded-lg hover:bg-dark-hover transition-colors"
+                            >
+                                Open
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- No Results -->
+    {% if not results.artists and not results.albums and not results.spotify_artists and not results.spotify_albums %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-12 text-center">
+        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <h3 class="text-lg font-medium mb-2">No results found</h3>
+        <p class="text-gray-400">Try a different search term or use Direct URL Download below</p>
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <!-- When no search query, show suggestions -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-8 text-center">
+        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <h3 class="text-lg font-medium mb-2">Search your library{% if spotify_configured %} and Spotify{% endif %}</h3>
+        <p class="text-gray-400">Find artists and albums to add to your collection</p>
+    </div>
+    {% endif %}
+    
+    <!-- Manual URL Input - Always shown -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-6">
+        <div class="flex items-center mb-4">
+            <svg class="w-6 h-6 text-spotify-green mr-2" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            <h3 class="text-lg font-medium">Direct URL Download</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">
+            Paste Spotify URLs directly to download. No API credentials required!
+            Supports albums, tracks, artists, and playlists.
+        </p>
+        <div x-data="urlDownloader()" class="space-y-4">
+            <div>
+                <textarea 
+                    x-model="urls"
+                    placeholder="Paste Spotify URLs here (one per line)
+
+Examples:
+https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv
+https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6
+https://open.spotify.com/artist/0OdUWJ0sBjDrqHygGUXeCF
+spotify:album:4LH4d3cOWNNsVw41Gqt2kv"
+                    rows="5"
+                    class="w-full px-4 py-3 bg-dark-surface border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green resize-none text-sm font-mono"
+                ></textarea>
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-400" x-text="urlCount + ' URL(s) detected'"></span>
+                <button 
+                    @click="submitUrls"
+                    :disabled="urlCount === 0 || loading"
+                    class="px-4 py-2 bg-spotify-green text-black font-medium rounded-full hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                    <svg x-show="loading" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span x-text="loading ? 'Adding...' : 'Add to Queue'"></span>
+                </button>
+            </div>
+            
+            <!-- Status Messages -->
+            <div x-show="message" x-transition class="p-3 rounded-lg text-sm" :class="messageType === 'success' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'">
+                <span x-text="message"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function urlDownloader() {
+    return {
+        urls: '',
+        loading: false,
+        message: '',
+        messageType: 'success',
+        
+        get urlCount() {
+            if (!this.urls.trim()) return 0;
+            const lines = this.urls.split('\n').filter(line => line.trim());
+            return lines.filter(line => 
+                line.includes('spotify.com/') || line.startsWith('spotify:')
+            ).length;
+        },
+        
+        async submitUrls() {
+            if (this.urlCount === 0) return;
+            
+            this.loading = true;
+            this.message = '';
+            
+            const urlList = this.urls.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.includes('spotify.com/') || line.startsWith('spotify:'));
+            
+            try {
+                const response = await fetch('/api/downloads/urls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: urlList })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.total_queued > 0) {
+                        this.messageType = 'success';
+                        this.message = `Added ${data.total_queued} item(s) to download queue.`;
+                        if (data.total_errors > 0) {
+                            this.message += ` ${data.total_errors} URL(s) failed.`;
+                        }
+                        this.urls = '';
+                    } else {
+                        this.messageType = 'error';
+                        this.message = 'No valid URLs could be processed.';
+                    }
+                } else {
+                    this.messageType = 'error';
+                    this.message = data.detail || 'Failed to add URLs to queue.';
+                }
+            } catch (error) {
+                this.messageType = 'error';
+                this.message = 'Network error. Please try again.';
+            }
+            
+            this.loading = false;
+        }
+    };
+}
+</script>
+{% endblock %}

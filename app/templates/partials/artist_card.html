@@ -1,0 +1,23 @@
+<div class="bg-dark-card rounded-lg p-4 hover:bg-dark-hover transition-colors group cursor-pointer"
+     hx-get="/artists/{{ artist.id }}"
+     hx-target="body"
+     hx-push-url="true">
+    <div class="aspect-square rounded-md overflow-hidden mb-4 bg-gray-800">
+        {% if artist.image_url %}
+        <img src="{{ artist.image_url }}" alt="{{ artist.name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+        {% else %}
+        <div class="w-full h-full flex items-center justify-center">
+            <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            </svg>
+        </div>
+        {% endif %}
+    </div>
+    <h3 class="font-semibold truncate">{{ artist.name }}</h3>
+    <p class="text-sm text-gray-400">
+        {{ artist.album_count or 0 }} album{% if artist.album_count != 1 %}s{% endif %}
+        {% if artist.spotify_id %}
+        <span class="text-spotify-green ml-1">●</span>
+        {% endif %}
+    </p>
+</div>

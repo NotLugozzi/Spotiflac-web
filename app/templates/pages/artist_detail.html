@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}{{ artist.name }} - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <!-- Artist Header -->
+    <div class="bg-gradient-to-b from-dark-card to-dark-bg rounded-xl overflow-hidden">
+        <div class="flex flex-col md:flex-row items-center md:items-end gap-6 p-6 md:p-8">
+            <!-- Artist Image -->
+            <div class="flex-shrink-0 w-48 h-48 md:w-56 md:h-56 bg-dark-surface rounded-full overflow-hidden shadow-2xl">
+                {% if artist.image_url %}
+                <img src="{{ artist.image_url }}" alt="{{ artist.name }}" class="w-full h-full object-cover">
+                {% else %}
+                <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                    <svg class="w-24 h-24 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Artist Info -->
+            <div class="flex-1 text-center md:text-left">
+                <p class="text-sm uppercase tracking-wider text-gray-400 mb-2">Artist</p>
+                <h1 class="text-4xl md:text-5xl font-bold mb-4">{{ artist.name }}</h1>
+                
+                <div class="flex flex-wrap justify-center md:justify-start items-center gap-4 text-sm text-gray-400 mb-4">
+                    <span>{{ total_albums }} albums</span>
+                    <span class="text-gray-600">•</span>
+                    <span class="text-spotify-green">{{ owned_albums }} owned</span>
+                    {% if artist.followers %}
+                    <span class="text-gray-600">•</span>
+                    <span>{{ "{:,}".format(artist.followers) }} followers</span>
+                    {% endif %}
+                </div>
+                
+                {% if artist.genres %}
+                <div class="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
+                    {% for genre in artist.genres[:5] %}
+                    <span class="px-3 py-1 text-xs bg-dark-card rounded-full">{{ genre }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Actions -->
+                <div class="flex flex-wrap justify-center md:justify-start gap-3 mt-4">
+                    <button 
+                        hx-post="/api/artists/{{ artist.id }}/sync"
+                        hx-swap="none"
+                        hx-on::after-request="if(event.detail.successful) { setTimeout(() => window.location.reload(), 1000); }"
+                        data-success-message="Syncing with Spotify..."
+                        class="px-6 py-2 bg-spotify-green text-black font-medium rounded-full hover:bg-green-400 transition-colors flex items-center"
+                    >
+                        <svg class="w-4 h-4 mr-2 htmx-indicator animate-spin hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        <svg class="w-4 h-4 mr-2 htmx-indicator-hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        Sync with Spotify
+                    </button>
+                    
+                    {% if artist.spotify_url %}
+                    <a href="{{ artist.spotify_url }}" target="_blank" class="px-6 py-2 bg-dark-card border border-gray-700 font-medium rounded-full hover:bg-dark-hover transition-colors">
+                        Open in Spotify
+                    </a>
+                    
+                    <button 
+                        hx-post="/api/artists/{{ artist.id }}/unlink"
+                        hx-swap="none"
+                        hx-confirm="Are you sure you want to unlink this artist from Spotify? This will remove all Spotify metadata."
+                        hx-on::after-request="if(event.detail.successful) { setTimeout(() => window.location.reload(), 500); }"
+                        data-success-message="Artist unlinked from Spotify"
+                        class="px-6 py-2 bg-red-600 border border-red-700 font-medium rounded-full hover:bg-red-700 transition-colors flex items-center"
+                        title="Unlink from Spotify"
+                    >
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                        </svg>
+                        Unlink
+                    </button>
+                    {% endif %}
+                    
+                    <button 
+                        hx-patch="/api/artists/{{ artist.id }}?is_monitored={{ 'false' if artist.is_monitored else 'true' }}"
+                        hx-swap="none"
+                        class="px-4 py-2 bg-dark-card border border-gray-700 rounded-full hover:bg-dark-hover transition-colors"
+                    >
+                        {% if artist.is_monitored %}
+                        <svg class="w-5 h-5 inline text-spotify-green" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                        {% else %}
+                        <svg class="w-5 h-5 inline text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                        {% endif %}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Discography -->
+    {% for album_type, albums in albums_by_type.items() %}
+    {% if albums %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold capitalize">{{ album_type }}s</h2>
+        </div>
+        
+        <div class="p-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {% for album in albums %}
+                <a href="/albums/{{ album.id }}" class="group">
+                    <div class="aspect-square bg-dark-surface rounded-lg overflow-hidden shadow-lg relative">
+                        {% if album.image_url %}
+                        <img src="{{ album.image_url }}" alt="{{ album.name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200">
+                        {% else %}
+                        <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                            <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+                            </svg>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Status overlay -->
+                        <div class="absolute top-2 right-2 flex flex-col gap-1">
+                            {% if album.is_owned %}
+                            <span class="px-2 py-0.5 text-xs bg-spotify-green text-black rounded font-medium">Owned</span>
+                            {% elif album.is_wanted %}
+                            <span class="px-2 py-0.5 text-xs bg-yellow-500 text-black rounded font-medium">Wanted</span>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Play/Download overlay -->
+                        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            {% if album.is_owned %}
+                            <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z"/>
+                            </svg>
+                            {% else %}
+                            <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <p class="text-sm font-medium truncate group-hover:text-white transition-colors">{{ album.name }}</p>
+                        <p class="text-xs text-gray-400">{{ album.release_date[:4] if album.release_date else 'Unknown' }}</p>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+    
+    <!-- Empty State -->
+    {% if total_albums == 0 %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-12 text-center">
+        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+        </svg>
+        <h3 class="text-lg font-medium mb-2">No albums found</h3>
+        <p class="text-gray-400 mb-4">Sync with Spotify to discover this artist's discography</p>
+        <button 
+            hx-post="/api/artists/{{ artist.id }}/sync"
+            hx-swap="none"
+            hx-on::after-request="if(event.detail.successful) { setTimeout(() => window.location.reload(), 1000); }"
+            data-success-message="Syncing with Spotify..."
+            class="px-6 py-2 bg-spotify-green text-black font-medium rounded-full hover:bg-green-400 transition-colors inline-flex items-center"
+        >
+            <svg class="w-4 h-4 mr-2 htmx-indicator animate-spin hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <svg class="w-4 h-4 mr-2 htmx-indicator-hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Sync with Spotify
+        </button>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Artists - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 class="text-2xl font-bold">Artists</h1>
+        
+        <!-- Search & Filters -->
+        <div class="flex items-center space-x-3">
+            <form action="/artists" method="GET" class="relative">
+                <input 
+                    type="text" 
+                    name="search" 
+                    value="{{ search or '' }}"
+                    placeholder="Search artists..." 
+                    class="w-48 sm:w-64 px-4 py-2 pl-10 text-sm bg-dark-card border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green"
+                >
+                <svg class="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Artists Grid -->
+    {% if artists %}
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {% for artist in artists %}
+        <a href="/artists/{{ artist.id }}" class="group bg-dark-card rounded-xl p-4 hover:bg-dark-hover transition-all duration-200">
+            <div class="aspect-square bg-dark-surface rounded-full overflow-hidden shadow-lg mb-4 mx-auto" style="max-width: 150px;">
+                {% if artist.image_url %}
+                <img src="{{ artist.image_url }}" alt="{{ artist.name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200">
+                {% else %}
+                <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                    <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+            <div class="text-center">
+                <p class="font-medium truncate group-hover:text-white transition-colors">{{ artist.name }}</p>
+                <p class="text-sm text-gray-400">{{ artist.albums|length }} albums</p>
+                {% if artist.genres %}
+                <p class="text-xs text-gray-500 truncate mt-1">{{ artist.genres[:3]|join(', ') }}</p>
+                {% endif %}
+            </div>
+            
+            <!-- Status badges -->
+            <div class="flex justify-center mt-3 space-x-1">
+                {% if artist.is_monitored %}
+                <span class="px-2 py-0.5 text-xs bg-spotify-green/20 text-spotify-green rounded">Monitored</span>
+                {% endif %}
+                {% if artist.spotify_id %}
+                <span class="px-2 py-0.5 text-xs bg-green-600/20 text-green-400 rounded">Spotify</span>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    
+    <!-- Pagination -->
+    {% if pages > 1 %}
+    <div class="flex justify-center items-center space-x-2">
+        {% if page > 1 %}
+        <a href="/artists?page={{ page - 1 }}{% if search %}&search={{ search }}{% endif %}" 
+           class="px-4 py-2 bg-dark-card border border-gray-700 rounded-lg hover:bg-dark-hover transition-colors">
+            Previous
+        </a>
+        {% endif %}
+        
+        <span class="px-4 py-2 text-gray-400">Page {{ page }} of {{ pages }}</span>
+        
+        {% if page < pages %}
+        <a href="/artists?page={{ page + 1 }}{% if search %}&search={{ search }}{% endif %}" 
+           class="px-4 py-2 bg-dark-card border border-gray-700 rounded-lg hover:bg-dark-hover transition-colors">
+            Next
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <!-- Empty State -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-12 text-center">
+        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <h3 class="text-lg font-medium mb-2">No artists found</h3>
+        {% if search %}
+        <p class="text-gray-400 mb-4">No artists match "{{ search }}"</p>
+        <a href="/artists" class="text-spotify-green hover:underline">Clear search</a>
+        {% else %}
+        <p class="text-gray-400 mb-4">Scan your library to discover artists</p>
+        <button 
+            hx-post="/api/library/scan"
+            hx-swap="none"
+            class="px-6 py-2 bg-spotify-green text-black font-medium rounded-full hover:bg-green-400 transition-colors"
+        >
+            Scan Library
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

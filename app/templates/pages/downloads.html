@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Downloads - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold">Downloads</h1>
+        
+        {% if not spotiflac_available %}
+        <span class="px-3 py-1 text-sm bg-red-600/20 text-red-400 rounded-full">
+            SpotiFLAC not available
+        </span>
+        {% endif %}
+    </div>
+    
+    <!-- Active Downloads -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Queue</h2>
+            <span class="text-sm text-gray-400">{{ active_downloads|length }} items</span>
+        </div>
+        
+        {% if active_downloads %}
+        <div class="divide-y divide-gray-800" id="download-queue-content">
+            {% for download in active_downloads %}
+            <div class="px-5 py-4 flex items-center space-x-4" id="download-{{ download.id }}">
+                <!-- Album Cover -->
+                <div class="flex-shrink-0 w-16 h-16 bg-dark-surface rounded overflow-hidden">
+                    {% if download.album and download.album.image_url %}
+                    <img src="{{ download.album.image_url }}" alt="{{ download.album.name }}" class="w-full h-full object-cover">
+                    {% else %}
+                    <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                        <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+                        </svg>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Download Info -->
+                <div class="flex-1 min-w-0">
+                    <p class="font-medium truncate">{{ download.album.name if download.album else 'Unknown Album' }}</p>
+                    <p class="text-sm text-gray-400 truncate">{{ download.album.artist.name if download.album and download.album.artist else 'Unknown Artist' }}</p>
+                    
+                    <!-- Progress Bar -->
+                    <div class="mt-2">
+                        <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div 
+                                class="h-full transition-all duration-300 {% if download.status.value == 'downloading' %}bg-blue-500 animate-pulse{% else %}bg-gray-500{% endif %}"
+                                style="width: {{ download.progress }}%"
+                            ></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Status -->
+                <div class="flex-shrink-0 text-center">
+                    <span class="px-3 py-1 text-xs rounded-full 
+                        {% if download.status.value == 'downloading' %}bg-blue-600/20 text-blue-400
+                        {% elif download.status.value == 'queued' %}bg-yellow-600/20 text-yellow-400
+                        {% else %}bg-gray-600/20 text-gray-400{% endif %}">
+                        {{ download.status.value|title }}
+                    </span>
+                </div>
+                
+                <!-- Actions -->
+                <div class="flex-shrink-0">
+                    <button 
+                        hx-delete="/api/downloads/{{ download.id }}"
+                        hx-target="#download-{{ download.id }}"
+                        hx-swap="outerHTML"
+                        class="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-gray-400">
+            <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <p>No downloads in queue</p>
+            <p class="text-sm mt-2">Search for albums to start downloading</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Download History -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold">History</h2>
+        </div>
+        
+        {% if history %}
+        <div class="divide-y divide-gray-800">
+            {% for download in history %}
+            <div class="px-5 py-4 flex items-center space-x-4">
+                <!-- Album Cover -->
+                <div class="flex-shrink-0 w-12 h-12 bg-dark-surface rounded overflow-hidden">
+                    {% if download.album and download.album.image_url %}
+                    <img src="{{ download.album.image_url }}" alt="{{ download.album.name }}" class="w-full h-full object-cover">
+                    {% else %}
+                    <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+                        </svg>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Info -->
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate">{{ download.album.name if download.album else 'Unknown Album' }}</p>
+                    <p class="text-xs text-gray-400 truncate">{{ download.album.artist.name if download.album and download.album.artist else 'Unknown Artist' }}</p>
+                </div>
+                
+                <!-- Status -->
+                <div class="flex-shrink-0">
+                    {% if download.status.value == 'completed' %}
+                    <span class="flex items-center text-sm text-spotify-green">
+                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        Completed
+                    </span>
+                    {% elif download.status.value == 'failed' %}
+                    <span class="flex items-center text-sm text-red-400">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Failed
+                    </span>
+                    {% elif download.status.value == 'cancelled' %}
+                    <span class="flex items-center text-sm text-gray-400">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        Cancelled
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <!-- Time -->
+                <div class="flex-shrink-0 text-xs text-gray-500">
+                    {{ download.completed_at.strftime('%Y-%m-%d %H:%M') if download.completed_at else '' }}
+                </div>
+                
+                <!-- Retry button for failed -->
+                {% if download.status.value == 'failed' %}
+                <button 
+                    hx-post="/api/downloads/{{ download.id }}/retry"
+                    hx-swap="none"
+                    class="flex-shrink-0 px-3 py-1 text-xs bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600/30 transition-colors"
+                >
+                    Retry
+                </button>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-gray-400">
+            <p>No download history</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    // Auto-refresh download queue
+    setInterval(() => {
+        htmx.ajax('GET', '/partials/download-queue', {target: '#download-queue-content', swap: 'innerHTML'});
+    }, 3000);
+</script>
+{% endblock %}
+{% endblock %}
