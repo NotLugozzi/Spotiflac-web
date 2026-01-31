@@ -641,12 +641,10 @@ class DownloadManager:
         path_parts = [base_path]
         
         if task.use_artist_subfolders and task.artist_name:
-            # Clean artist name for filesystem
             artist_clean = self._sanitize_filename(task.artist_name)
             path_parts.append(artist_clean)
         
         if task.use_album_subfolders and task.album_name:
-            # Clean album name for filesystem
             album_clean = self._sanitize_filename(task.album_name)
             path_parts.append(album_clean)
         

@@ -90,7 +90,7 @@
         <!-- Sidebar -->
         <aside 
             class="fixed inset-y-0 left-0 z-50 w-64 bg-dark-surface transform transition-transform duration-200 lg:relative lg:translate-x-0"
-            :class="{ '-translate-x-full': !sidebarOpen && !mobileMenuOpen, 'translate-x-0': sidebarOpen || mobileMenuOpen }"
+            :class="{ '-translate-x-full': !mobileMenuOpen, 'translate-x-0': mobileMenuOpen }"
         >
             <div class="flex flex-col h-full">
                 <!-- Logo -->
@@ -101,9 +101,13 @@
                         </svg>
                         <span class="text-lg font-semibold">Spotiflac</span>
                     </a>
-                    <button @click="mobileMenuOpen = false" class="lg:hidden text-gray-400 hover:text-white">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    <button 
+                        @click="mobileMenuOpen = false;" 
+                        class="lg:hidden text-gray-400 hover:text-white p-2 relative z-10"
+                        type="button"
+                    >
+                        <svg class="w-6 h-6 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path class="pointer-events-none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                         </svg>
                     </button>
                 </div>
@@ -168,6 +172,21 @@
                 </div>
             </div>
         </aside>
+        
+        <!-- Mobile Menu Overlay -->
+        <div 
+            x-show="mobileMenuOpen"
+            x-cloak
+            @click="mobileMenuOpen = false"
+            x-transition:enter="transition-opacity ease-linear duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition-opacity ease-linear duration-200"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+            style="display: none;"
+        ></div>
         
         <!-- Main Content -->
         <div class="flex-1 flex flex-col overflow-hidden">
