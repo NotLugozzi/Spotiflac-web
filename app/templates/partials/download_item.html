@@ -34,10 +34,22 @@
             {{ download.artist_name or 'Unknown Artist' }}
             {% if download.album_name %} • {{ download.album_name }}{% endif %}
         </p>
-        {% if download.status.value == 'downloading' and download.progress %}
-        <div class="mt-2 w-full bg-gray-700 rounded-full h-2">
-            <div class="bg-spotify-green h-2 rounded-full transition-all duration-300" style="width: {{ download.progress }}%"></div>
-        </div>
+        {% if download.status.value == 'downloading' %}
+            {% if download.current_track_name %}
+            <p class="text-xs text-spotify-green mt-1 truncate">
+                {% if download.current_track_number and download.total_tracks %}
+                    [{{ download.current_track_number }}/{{ download.total_tracks }}] {{ download.current_track_name }}
+                {% else %}
+                    {{ download.current_track_name }}
+                {% endif %}
+            </p>
+            {% endif %}
+            {% if download.progress %}
+            <div class="mt-2 w-full bg-gray-700 rounded-full h-2">
+                <div class="bg-spotify-green h-2 rounded-full transition-all duration-300" style="width: {{ download.progress }}%"></div>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">{{ download.progress }}%</p>
+            {% endif %}
         {% endif %}
         {% if download.error_message %}
         <p class="text-sm text-red-400 mt-1">{{ download.error_message }}</p>

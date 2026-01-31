@@ -210,38 +210,33 @@ class Download(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     
-    # Download info
     status = Column(Enum(DownloadStatus), default=DownloadStatus.PENDING)
     progress = Column(Float, default=0.0)
     error_message = Column(Text, nullable=True)
     
-    # SpotiFLAC config for this download
     service = Column(String(50), nullable=True)
     output_path = Column(String(1000), nullable=True)
-    
-    # Direct URL support (for manual downloads without album record)
+
     spotify_url = Column(String(500), nullable=True)
-    url_type = Column(String(20), nullable=True)  # album, track, artist, playlist
-    title = Column(String(255), nullable=True)  # Display title for manual downloads
-    artist_name = Column(String(255), nullable=True)  # Display artist for manual downloads
+    url_type = Column(String(20), nullable=True)
+    title = Column(String(255), nullable=True)
+    artist_name = Column(String(255), nullable=True) 
+
+
+    current_track_name = Column(String(500), nullable=True)
+    current_track_number = Column(Integer, nullable=True) 
+    total_tracks = Column(Integer, nullable=True)
     
-    # Foreign keys (nullable for manual URL downloads)
     album_id = Column(Integer, ForeignKey("albums.id"), nullable=True)
-    
-    # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    
-    # Relationships
     album = relationship("Album", back_populates="downloads")
     
     def __repr__(self):
         return f"<Download(id={self.id}, status={self.status})>"
     
     def to_dict(self):
-        # For manual downloads, use stored title/artist
-        # For album-linked downloads, get from album
         if self.album:
             album_name = self.album.name
             artist_name = self.album.artist.name if self.album.artist else None
@@ -268,6 +263,9 @@ class Download(Base):
             "url_type": self.url_type,
             "title": self.title,
             "is_manual": self.album_id is None,
+            "current_track_name": self.current_track_name,
+            "current_track_number": self.current_track_number,
+            "total_tracks": self.total_tracks,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,

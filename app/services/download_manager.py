@@ -23,15 +23,35 @@ from sqlalchemy.orm import Session
 from app.models import Download, Album, DownloadStatus
 from app.database import get_db_session
 from app.config import get_settings
+from app.services.url_parser import parse_spotify_url, SpotifyUrlType
 
 logger = logging.getLogger(__name__)
 
 
+class TeeOutput:
+    def __init__(self, download_id: int, parser_callback: Callable):
+        self.buffer = StringIO()
+        self.download_id = download_id
+        self.parser_callback = parser_callback
+    
+    def write(self, text: str):
+        self.buffer.write(text)
+        if text.strip():
+            logger.info(f"[SpotiFLAC] {text.rstrip()}")
+            self.parser_callback(text.strip(), self.download_id)
+        return len(text)
+    
+    def flush(self):
+        pass
+    
+    def getvalue(self):
+        return self.buffer.getvalue()
+
+
 @dataclass
 class DownloadTask:
-    """Represents a download task to be processed."""
     download_id: int
-    album_id: Optional[int]  # Can be None for manual URL downloads
+    album_id: Optional[int] 
     spotify_url: str
     output_path: str
     services: List[str]
@@ -39,7 +59,6 @@ class DownloadTask:
     use_artist_subfolders: bool
     use_album_subfolders: bool
     retry_minutes: int
-    # Optional metadata for manual downloads
     title: Optional[str] = None
     artist_name: Optional[str] = None
     album_name: Optional[str] = None
@@ -146,13 +165,55 @@ class DownloadManager:
         """
         settings = get_settings()
         
+        # Fetch metadata from Spotify API if not provided
+        parsed_url = parse_spotify_url(spotify_url)
+        total_tracks = None
+        
+        if not title or not artist_name:
+            try:
+                from app.services.spotify_service import SpotifyService
+                spotify_service = SpotifyService()
+                
+                if parsed_url.url_type == SpotifyUrlType.ALBUM:
+                    album_data = spotify_service.get_album(parsed_url.spotify_id)
+                    if album_data:
+                        title = album_data.get('name') or title
+                        artist_name = album_data.get('artist_name') or artist_name
+                        total_tracks = album_data.get('total_tracks')
+                        logger.info(f"Fetched album metadata for immediate download: {title} by {artist_name} ({total_tracks} tracks)")
+                
+                elif parsed_url.url_type == SpotifyUrlType.TRACK:
+                    track_data = spotify_service.get_track(parsed_url.spotify_id)
+                    if track_data:
+                        title = track_data.get('name') or title
+                        artist_name = track_data.get('artist_name') or artist_name
+                        total_tracks = 1
+                        logger.info(f"Fetched track metadata for immediate download: {title} by {artist_name}")
+                
+                elif parsed_url.url_type == SpotifyUrlType.ARTIST:
+                    artist_data = spotify_service.get_artist(parsed_url.spotify_id)
+                    if artist_data:
+                        artist_name = artist_data.get('name') or artist_name
+                        title = f"All albums by {artist_name}" if artist_name else title
+                        logger.info(f"Fetched artist metadata for immediate download: {artist_name}")
+                        
+            except Exception as e:
+                logger.warning(f"Could not fetch Spotify metadata for immediate download: {e}")
+        
+        # Fallback titles if still not available
+        if not title:
+            title = f"Manual {url_type.title()} Download"
+        if not total_tracks and url_type == 'track':
+            total_tracks = 1
+        
         # Create download record
         download = Download(
             album_id=None,
             spotify_url=spotify_url,
             url_type=url_type,
-            title=title or f"Manual {url_type.title()} Download",
+            title=title,
             artist_name=artist_name,
+            total_tracks=total_tracks,
             status=DownloadStatus.DOWNLOADING,
             service=settings.spotiflac_service,
             output_path=settings.download_path,
@@ -175,7 +236,7 @@ class DownloadManager:
             title=title,
             artist_name=artist_name,
             album_name=title,
-            total_tracks=None,
+            total_tracks=total_tracks,
         )
         
         # Start download in a background thread immediately
@@ -306,13 +367,14 @@ class DownloadManager:
     ) -> Download:
         """
         Add a Spotify URL directly to the download queue (no album record needed).
+        Fetches metadata from Spotify API if available.
         
         Args:
             db: Database session
             spotify_url: Spotify URL or URI
             url_type: Type of URL (album, track, artist, playlist)
-            title: Optional title for display
-            artist_name: Optional artist name for display
+            title: Optional title for display (will be fetched from Spotify if not provided)
+            artist_name: Optional artist name for display (will be fetched from Spotify if not provided)
             
         Returns:
             Download record
@@ -329,13 +391,44 @@ class DownloadManager:
             logger.warning(f"URL {spotify_url} is already in the download queue")
             return existing
         
+        parsed_url = parse_spotify_url(spotify_url)
+        
+        total_tracks = None
+        if not title or not artist_name:
+            try:
+                from app.services.spotify_service import SpotifyService
+                spotify_service = SpotifyService()
+                
+                if parsed_url.url_type == SpotifyUrlType.ALBUM:
+                    album_data = spotify_service.get_album(parsed_url.spotify_id)
+                    if album_data:
+                        title = album_data.get('name') or title
+                        artist_name = album_data.get('artist_name') or artist_name
+                        total_tracks = album_data.get('total_tracks')
+                        logger.info(f"Fetched album metadata: {title} by {artist_name} ({total_tracks} tracks)")
+                
+                elif parsed_url.url_type == SpotifyUrlType.TRACK:
+                    # For single track, we could get track metadata
+                    # For now, keep simple
+                    total_tracks = 1
+                    
+            except Exception as e:
+                logger.warning(f"Could not fetch Spotify metadata: {e}")
+        
+        # Fallback titles if still not available
+        if not title:
+            title = f"Manual {url_type.title()} Download"
+        if not total_tracks and url_type == 'track':
+            total_tracks = 1
+        
         # Create download record without album association
         download = Download(
             album_id=None,  # No album record
             spotify_url=spotify_url,
             url_type=url_type,
-            title=title or f"Manual {url_type.title()} Download",
+            title=title,
             artist_name=artist_name,
+            total_tracks=total_tracks,
             status=DownloadStatus.PENDING,
             service=settings.spotiflac_service,
             output_path=settings.download_path,
@@ -357,14 +450,14 @@ class DownloadManager:
             title=title,
             artist_name=artist_name,
             album_name=title,
-            total_tracks=None,
+            total_tracks=total_tracks,
         )
         
         # Add to queue
         self._queue.put(task)
         download.status = DownloadStatus.QUEUED
         
-        logger.info(f"Added URL to download queue: {spotify_url}")
+        logger.info(f"Added URL to download queue: {spotify_url} - {title}")
         
         return download
     
@@ -539,6 +632,7 @@ class DownloadManager:
                     download.status = DownloadStatus.COMPLETED
                     download.progress = 100
                     download.error_message = None
+                    download.current_track_name = "Download complete"
                     
                     # Mark album as owned if linked
                     if download.album_id:
@@ -548,6 +642,15 @@ class DownloadManager:
                     
                     logger.info(f"Download completed: {task.download_id}")
                     self._notify_progress(task.download_id, "completed", 100)
+                    
+                    # Trigger library scan after successful download
+                    try:
+                        from app.services.library_scanner import get_library_scanner
+                        scanner = get_library_scanner()
+                        logger.info("Triggering library scan after download completion")
+                        scanner.scan_library()
+                    except Exception as scan_err:
+                        logger.error(f"Failed to trigger library scan: {scan_err}")
                 else:
                     download.status = DownloadStatus.FAILED
                     if not download.error_message:
@@ -681,6 +784,75 @@ class DownloadManager:
         
         return name
     
+    def _parse_spotiflac_output(self, line: str, download_id: int) -> None:
+        """
+        Parse spotiflac output line and update progress.
+        Extracts track progress from lines like: [1/17] Starting download: Damned - Kevin Sherwood
+        
+        Args:
+            line: Output line from spotiflac
+            download_id: ID of the download to update
+        """
+        # Log every line we're trying to parse
+        logger.debug(f"[PARSER] Parsing line for download {download_id}: {line[:100]}")
+        
+        # Pattern: [X/Y] Starting download: TrackName - Artist
+        match = re.match(r'\[(\d+)/(\d+)\]\s+Starting download:\s+(.+)', line)
+        if match:
+            current_track = int(match.group(1))
+            total_tracks = int(match.group(2))
+            track_name = match.group(3).strip()
+            
+            logger.info(f"✓ MATCHED track progress: [{current_track}/{total_tracks}] {track_name}")
+            
+            # Calculate progress percentage
+            progress = int((current_track / total_tracks) * 100) if total_tracks > 0 else 0
+            
+            try:
+                with get_db_session() as db:
+                    download = db.query(Download).get(download_id)
+                    if download:
+                        logger.info(f"  Current status: {download.status}")
+                        if download.status == DownloadStatus.DOWNLOADING:
+                            download.current_track_number = current_track
+                            download.total_tracks = total_tracks
+                            download.current_track_name = track_name
+                            download.progress = progress
+                            db.commit()
+                            self._notify_progress(download_id, "downloading", progress)
+                            
+                            if current_track == total_tracks:
+                                download.status = DownloadStatus.COMPLETED
+                                download.progress = 100
+                                download.current_track_name = "Download complete"
+                                download.completed_at = datetime.utcnow()
+                                
+                                if download.album_id:
+                                    album = db.query(Album).get(download.album_id)
+                                    if album:
+                                        album.is_owned = True
+                                
+                                db.commit()
+                                self._notify_progress(download_id, "completed", 100)
+                                
+                                try:
+                                    from app.services.library_scanner import get_library_scanner
+                                    scanner = get_library_scanner()
+                                    scanner.scan_library()
+                                except Exception as scan_err:
+                                    logger.error(f"Failed to trigger library scan: {scan_err}")
+                        else:
+                            logger.warning(f"  Download status is {download.status}, not updating progress")
+                    else:
+                        logger.error(f"  Download {download_id} not found in database!")
+            except Exception as e:
+                logger.error(f"Unable to update track progress: {e}", exc_info=True)
+        else:
+            if 'completed' in line.lower() or 'finished' in line.lower() or 'done' in line.lower():
+                logger.info(f"[PARSER] Possible completion line: {line[:100]}")
+            elif 'downloading' in line.lower() or 'searching' in line.lower():
+                logger.debug(f"[PARSER] Activity line (no match): {line[:100]}")
+    
     def _execute_spotiflac(self, task: DownloadTask) -> bool:
         """
         Execute SpotiFLAC to download an album.
@@ -774,45 +946,55 @@ class DownloadManager:
             # Ensure output directory exists
             os.makedirs(task.output_path, exist_ok=True)
             
-            # Capture stdout/stderr
-            stdout_capture = StringIO()
-            stderr_capture = StringIO()
+            # Capture stdout/stderr by replacing sys.stdout directly
+            # Use TeeOutput to capture AND log in real-time
+            stdout_capture = TeeOutput(task.download_id, self._parse_spotiflac_output)
+            stderr_capture = TeeOutput(task.download_id, self._parse_spotiflac_output)
             
-            # Also set up logging capture
-            log_capture = StringIO()
-            log_handler = logging.StreamHandler(log_capture)
-            log_handler.setLevel(logging.DEBUG)
+            # Save original stdout/stderr
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
             
-            # Get SpotiFLAC's logger if it exists
-            spotiflac_logger = logging.getLogger('SpotiFLAC')
-            original_handlers = spotiflac_logger.handlers.copy()
-            spotiflac_logger.addHandler(log_handler)
+            logger.info(f"   URL: {task.spotify_url}")
+            logger.info(f"   Output: {task.output_path}")
+            logger.info(f"   Services: {task.services}")
             
             try:
-                with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-                    SpotiFLAC(
-                        url=task.spotify_url,
-                        output_dir=task.output_path,
-                        services=task.services if task.services else ["tidal", "deezer", "qobuz"],
-                        filename_format=task.filename_format or "{title} - {artist}",
-                        use_track_numbers=True,
-                        use_artist_subfolders=task.use_artist_subfolders,
-                        use_album_subfolders=task.use_album_subfolders,
-                        loop=task.retry_minutes if task.retry_minutes > 0 else None,
-                    )
+                # Replace sys.stdout and sys.stderr directly
+                sys.stdout = stdout_capture
+                sys.stderr = stderr_capture
+                
+                SpotiFLAC(
+                    url=task.spotify_url,
+                    output_dir=task.output_path,
+                    services=task.services if task.services else ["tidal", "deezer", "qobuz"],
+                    filename_format=task.filename_format or "{title} - {artist}",
+                    use_track_numbers=True,
+                    use_artist_subfolders=task.use_artist_subfolders,
+                    use_album_subfolders=task.use_album_subfolders,
+                    loop=task.retry_minutes if task.retry_minutes > 0 else None,
+                )
             finally:
-                # Restore original handlers
-                spotiflac_logger.handlers = original_handlers
-            
+                # Restore original stdout/stderr
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+                        
             # Combine all captured output
             stdout_text = stdout_capture.getvalue()
             stderr_text = stderr_capture.getvalue()
-            log_text = log_capture.getvalue()
             
-            result.logs = f"{stdout_text}\n{stderr_text}\n{log_text}"
+            result.logs = f"{stdout_text}\n{stderr_text}"            
+            # Parse the output for track progress (already parsed in real-time by TeeOutput, but do it again for completeness)
+            lines_parsed = 0
+            lines_with_content = 0
+            all_lines = result.logs.split('\n')
             
-            logger.info(f"SpotiFLAC stdout: {stdout_text[:500] if stdout_text else '(empty)'}")
-            logger.info(f"SpotiFLAC stderr: {stderr_text[:500] if stderr_text else '(empty)'}")
+            for i, line in enumerate(all_lines, 1):
+                if line.strip():
+                    lines_with_content += 1
+                    lines_parsed += 1
+            
+            logger.info(f"📊 Total output: {lines_parsed} lines with content")
             
             # SpotiFLAC completed without exception
             result.success = True
@@ -868,9 +1050,38 @@ class DownloadManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True,
             )
             
-            stdout, stderr = self._current_process.communicate()
+            # Capture output and parse in real-time
+            stdout_lines = []
+            stderr_lines = []
+            
+            
+            # Read stdout in real-time
+            line_count = 0
+            while True:
+                line = self._current_process.stdout.readline()
+                if not line:
+                    break
+                line_count += 1
+                stdout_lines.append(line)
+                logger.debug(f"[CLI OUTPUT #{line_count}] {line.strip()[:100]}")
+                # Parse the line for progress
+                self._parse_spotiflac_output(line.strip(), task.download_id)
+            
+            
+            # Wait for process to complete and get stderr
+            self._current_process.wait()
+            stderr = self._current_process.stderr.read()
+            stderr_lines = stderr.split('\n') if stderr else []
+            
+            # Parse stderr as well
+            for line in stderr_lines:
+                self._parse_spotiflac_output(line.strip(), task.download_id)
+            
+            stdout = ''.join(stdout_lines)
             result.logs = f"{stdout}\n{stderr}"
             
             logger.info(f"SpotiFLAC CLI stdout: {stdout[:500] if stdout else '(empty)'}")
@@ -929,14 +1140,13 @@ class DownloadManager:
             if track and len(track) > 2:
                 cleaned.append(track)
         
-        return list(set(cleaned))  # Remove duplicates
+        return list(set(cleaned))
     
     def _match_tracks_to_files(self, tracks: List[str], files: set) -> List[str]:
         """Check if any expected tracks match files in the directory."""
         matched = []
         
         for track in tracks:
-            # Normalize track name for comparison
             track_lower = track.lower()
             track_words = set(re.findall(r'\w+', track_lower))
             
@@ -945,7 +1155,6 @@ class DownloadManager:
                 filename_no_ext = os.path.splitext(filename)[0]
                 filename_words = set(re.findall(r'\w+', filename_no_ext))
                 
-                # Check if most words from track name appear in filename
                 if track_words and len(track_words & filename_words) >= len(track_words) * 0.5:
                     matched.append(filepath)
                     break
@@ -953,7 +1162,6 @@ class DownloadManager:
         return matched
 
 
-# Global download manager instance
 _download_manager: Optional[DownloadManager] = None
 
 

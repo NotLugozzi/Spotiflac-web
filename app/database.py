@@ -53,7 +53,7 @@ def init_db() -> None:
             url,
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
-            echo=get_settings().debug,
+            echo=False,
         )
         
         # Enable foreign keys for SQLite
@@ -63,7 +63,7 @@ def init_db() -> None:
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
     else:
-        _engine = create_engine(url, echo=get_settings().debug)
+        _engine = create_engine(url, echo=False)
     
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
     
