@@ -143,7 +143,7 @@ class DownloadManager:
         """Add a callback to be called on download progress updates."""
         self._callbacks.append(callback)
     
-    def start_download_immediately(
+    def start_download(
         self, 
         db: Session, 
         spotify_url: str,
@@ -152,8 +152,8 @@ class DownloadManager:
         artist_name: Optional[str] = None
     ) -> Download:
         """
-        Start a download immediately in a background thread without using the queue.
-        This allows parallel downloads since SpotiFLAC runs as separate processes.
+        Add a download to the queue to be processed by the worker thread.
+        Despite the name, this now uses the queue for sequential processing.
         
         Args:
             db: Database session
@@ -165,6 +165,10 @@ class DownloadManager:
         Returns:
             Download record
         """
+        # Ensure worker is running
+        if not self._running:
+            self.start()
+        
         settings = get_settings()
         
         # Fetch metadata from Spotify API if not provided
@@ -182,7 +186,7 @@ class DownloadManager:
                         title = album_data.get('name') or title
                         artist_name = album_data.get('artist_name') or artist_name
                         total_tracks = album_data.get('total_tracks')
-                        logger.info(f"Fetched album metadata for immediate download: {title} by {artist_name} ({total_tracks} tracks)")
+                        logger.info(f"Fetched album metadata: {title} by {artist_name} ({total_tracks} tracks)")
                 
                 elif parsed_url.url_type == SpotifyUrlType.TRACK:
                     track_data = spotify_service.get_track(parsed_url.spotify_id)
@@ -190,17 +194,17 @@ class DownloadManager:
                         title = track_data.get('name') or title
                         artist_name = track_data.get('artist_name') or artist_name
                         total_tracks = 1
-                        logger.info(f"Fetched track metadata for immediate download: {title} by {artist_name}")
+                        logger.info(f"Fetched track metadata: {title} by {artist_name}")
                 
                 elif parsed_url.url_type == SpotifyUrlType.ARTIST:
                     artist_data = spotify_service.get_artist(parsed_url.spotify_id)
                     if artist_data:
                         artist_name = artist_data.get('name') or artist_name
                         title = f"All albums by {artist_name}" if artist_name else title
-                        logger.info(f"Fetched artist metadata for immediate download: {artist_name}")
+                        logger.info(f"Fetched artist metadata: {artist_name}")
                         
             except Exception as e:
-                logger.warning(f"Could not fetch Spotify metadata for immediate download: {e}")
+                logger.warning(f"Could not fetch Spotify metadata: {e}")
         
         # Fallback titles if still not available
         if not title:
@@ -216,10 +220,9 @@ class DownloadManager:
             title=title,
             artist_name=artist_name,
             total_tracks=total_tracks,
-            status=DownloadStatus.DOWNLOADING,
+            status=DownloadStatus.QUEUED,
             service=settings.spotiflac_service,
             output_path=settings.download_path,
-            started_at=datetime.utcnow(),
         )
         db.add(download)
         db.flush()
@@ -241,15 +244,10 @@ class DownloadManager:
             total_tracks=total_tracks,
         )
         
-        # Start download in a background thread immediately
-        download_thread = threading.Thread(
-            target=self._process_download,
-            args=(task,),
-            daemon=True
-        )
-        download_thread.start()
+        # Add to queue for sequential processing
+        self._queue.put(task)
         
-        logger.info(f"Started immediate download in background: {spotify_url}")
+        logger.info(f"Added download to queue: {spotify_url} - {title}")
         
         return download
     
@@ -313,6 +311,10 @@ class DownloadManager:
         """
         if not album.spotify_url:
             raise ValueError(f"Album {album.name} has no Spotify URL")
+        
+        # Ensure worker is running
+        if not self._running:
+            self.start()
         
         settings = get_settings()
         
@@ -381,6 +383,10 @@ class DownloadManager:
         Returns:
             Download record
         """
+        # Ensure worker is running
+        if not self._running:
+            self.start()
+        
         settings = get_settings()
         
         # Check if same URL already in queue

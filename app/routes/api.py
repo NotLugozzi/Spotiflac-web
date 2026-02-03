@@ -510,8 +510,7 @@ async def create_download(
         # Fetch metadata
         title, artist_name, _ = _fetch_spotify_metadata(parsed.spotify_id, parsed.url_type.value)
         
-        # Start download immediately (parallel execution)
-        download = manager.start_download_immediately(
+        download = manager.start_download(
             db=db,
             spotify_url=parsed.normalized_url,
             url_type=parsed.url_type.value,
@@ -534,7 +533,7 @@ async def create_download(
         # Start download immediately instead of queuing
         parsed = parse_spotify_url(album.spotify_url)
         if parsed.is_valid:
-            download = manager.start_download_immediately(
+            download = manager.start_download(
                 db=db,
                 spotify_url=parsed.normalized_url,
                 url_type=parsed.url_type.value,
@@ -659,7 +658,7 @@ async def download_from_url(
         artist_name = artist_name or fetched_artist
     
     # Start download immediately (parallel execution)
-    download = manager.start_download_immediately(
+    download = manager.start_download(
         db=db,
         spotify_url=parsed.normalized_url,
         url_type=parsed.url_type.value,
@@ -703,7 +702,7 @@ async def download_from_urls(
             title, artist_name, _ = _fetch_spotify_metadata(parsed.spotify_id, parsed.url_type.value)
             
             # Start download immediately (parallel execution)
-            download = manager.start_download_immediately(
+            download = manager.start_download(
                 db=db,
                 spotify_url=parsed.normalized_url,
                 url_type=parsed.url_type.value,
