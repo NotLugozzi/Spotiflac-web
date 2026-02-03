@@ -24,6 +24,8 @@ from app.models import Download, Album, DownloadStatus
 from app.database import get_db_session
 from app.config import get_settings
 from app.services.url_parser import parse_spotify_url, SpotifyUrlType
+from app.services.spotify_service import get_spotify_service
+from app.services.spotify_service import get_spotify_service
 
 logger = logging.getLogger(__name__)
 
@@ -920,6 +922,24 @@ class DownloadManager:
                 result.success = False
                 result.error_message = "No audio files in output directory"
         
+        # Create m3u playlist if this is a playlist download and it succeeded
+        if result.success:
+            parsed_url = parse_spotify_url(task.spotify_url)
+            if parsed_url.url_type == SpotifyUrlType.PLAYLIST:
+                logger.info("Detected playlist download, attempting to create m3u file")
+                # For playlists, use the output_path directly (no album subfolders)
+                download_dir = task.output_path
+                
+                if download_dir and os.path.exists(download_dir):
+                    logger.info(f"Creating m3u playlist in: {download_dir}")
+                    m3u_path = self._create_m3u_playlist(task, download_dir)
+                    if m3u_path:
+                        logger.info(f"✓ Created playlist file: {m3u_path}")
+                    else:
+                        logger.warning("Failed to create m3u playlist file")
+                else:
+                    logger.error(f"Download directory does not exist: {download_dir}")
+        
         # Update download record with result
         try:
             with get_db_session() as db:
@@ -972,19 +992,16 @@ class DownloadManager:
                     use_track_numbers=True,
                     use_artist_subfolders=task.use_artist_subfolders,
                     use_album_subfolders=task.use_album_subfolders,
-                    loop=task.retry_minutes if task.retry_minutes > 0 else None,
+                    loop=None,
                 )
             finally:
-                # Restore original stdout/stderr
                 sys.stdout = original_stdout
                 sys.stderr = original_stderr
                         
-            # Combine all captured output
             stdout_text = stdout_capture.getvalue()
             stderr_text = stderr_capture.getvalue()
             
             result.logs = f"{stdout_text}\n{stderr_text}"            
-            # Parse the output for track progress (already parsed in real-time by TeeOutput, but do it again for completeness)
             lines_parsed = 0
             lines_with_content = 0
             all_lines = result.logs.split('\n')
@@ -993,10 +1010,6 @@ class DownloadManager:
                 if line.strip():
                     lines_with_content += 1
                     lines_parsed += 1
-            
-            logger.info(f"📊 Total output: {lines_parsed} lines with content")
-            
-            # SpotiFLAC completed without exception
             result.success = True
             
         except Exception as e:
@@ -1160,6 +1173,117 @@ class DownloadManager:
                     break
         
         return matched
+    
+    def _create_m3u_playlist(self, task: DownloadTask, download_dir: str) -> Optional[str]:
+        """Create m3u playlist file for a playlist download.
+        
+        Args:
+            task: Download task with playlist information
+            download_dir: Directory where files were downloaded
+            
+        Returns:
+            Path to created m3u file, or None if failed
+        """
+        try:
+            logger.info(f"Starting m3u creation for playlist in {download_dir}")
+            
+            # Parse the URL to get playlist ID
+            parsed_url = parse_spotify_url(task.spotify_url)
+            if parsed_url.url_type != SpotifyUrlType.PLAYLIST:
+                logger.warning(f"Not a playlist URL: {task.spotify_url}")
+                return None
+            
+            logger.info(f"Fetching playlist metadata for ID: {parsed_url.spotify_id}")
+            
+            # Fetch playlist metadata from Spotify
+            spotify = get_spotify_service()
+            playlist_data = spotify.get_playlist(parsed_url.spotify_id)
+            
+            if not playlist_data:
+                logger.error(f"Could not fetch playlist data for {parsed_url.spotify_id}")
+                return None
+            
+            playlist_name = playlist_data.get("name", "playlist")
+            tracks = playlist_data.get("tracks", [])
+            
+            logger.info(f"Playlist '{playlist_name}' has {len(tracks)} tracks")
+            
+            if not tracks:
+                logger.warning(f"Playlist has no tracks: {playlist_name}")
+                return None
+            
+            # We expect a folder to be named after the playlist, this is where we'll store the m3u
+            playlist_folder = self._sanitize_filename(playlist_name)
+            playlist_dir = os.path.join(download_dir, playlist_folder)
+            
+            if os.path.exists(playlist_dir) and os.path.isdir(playlist_dir):
+                logger.info(f"Found playlist directory: {playlist_dir}")
+                download_dir = playlist_dir
+            else:
+                logger.warning(f"Expected playlist directory not found: {playlist_dir}")
+            
+            audio_files = self._get_audio_files(download_dir)
+            
+            logger.info(f"Found {len(audio_files)} audio files in {download_dir}")
+            
+            if not audio_files:
+                logger.warning(f"No audio files found in {download_dir}")
+                return None
+            
+            # Build m3u content
+            m3u_lines = ["#EXTM3U"]
+            matched_files = []
+            
+            for track in tracks:
+                track_name = track.get("name", "")
+                artist_name = track.get("artist_name", "")
+                duration_ms = track.get("duration_ms", 0)
+                duration_sec = duration_ms // 1000 if duration_ms else -1
+                
+                matched_file = None
+                search_patterns = [
+                    f"{artist_name} - {track_name}",
+                    f"{track_name} - {artist_name}",
+                    track_name,
+                ]
+                
+                for file_path in audio_files:
+                    file_name = os.path.basename(file_path)
+                    file_name_noext = os.path.splitext(file_name)[0]
+                    
+                    for pattern in search_patterns:
+                        if pattern.lower() in file_name_noext.lower():
+                            matched_file = file_path
+                            break
+                    
+                    if matched_file:
+                        break
+                
+                if matched_file:
+                    rel_path = os.path.relpath(matched_file, download_dir)
+                    
+                    m3u_lines.append(f"#EXTINF:{duration_sec},{artist_name} - {track_name}")
+                    m3u_lines.append(rel_path)
+                    matched_files.append(matched_file)
+                else:
+                    logger.debug(f"Could not match file for: {artist_name} - {track_name}")
+            
+            if not matched_files:
+                logger.warning("No tracks could be matched to files")
+                return None
+            
+            m3u_filename = self._sanitize_filename(playlist_name) + ".m3u"
+            m3u_path = os.path.join(download_dir, m3u_filename)
+            
+            with open(m3u_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(m3u_lines))
+            
+            logger.info(f"Created m3u playlist: {m3u_path} with {len(matched_files)} tracks")
+            return m3u_path
+            
+        except Exception as e:
+            logger.error(f"Error creating m3u playlist: {e}", exc_info=True)
+            return None
 
 
 _download_manager: Optional[DownloadManager] = None

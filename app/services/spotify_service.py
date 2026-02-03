@@ -235,19 +235,60 @@ class SpotifyService:
             logger.error(f"Error searching for album '{query}': {e}")
             return []
     
+    @rate_limit_handler()
+    def get_playlist(self, playlist_id: str) -> Optional[Dict[str, Any]]:
+        """Get playlist information including tracks."""
+        if not self._ensure_client():
+            return None
+        
+        try:
+            playlist = self._client.playlist(playlist_id)
+            parsed = self._parse_playlist(playlist)
+            
+            tracks = []
+            offset = 0
+            limit = 100
+            
+            while True:
+                results = self._client.playlist_tracks(
+                    playlist_id, 
+                    limit=limit, 
+                    offset=offset
+                )
+                
+                items = results.get("items", [])
+                if not items:
+                    break
+                
+                for item in items:
+                    track = item.get("track")
+                    if track:
+                        album = track.get("album", {})
+                        tracks.append(self._parse_track(track, album))
+                
+                if len(items) < limit:
+                    break
+                    
+                offset += limit
+            
+            parsed["tracks"] = tracks
+            return parsed
+            
+        except Exception as e:
+            logger.error(f"Error getting playlist '{playlist_id}': {e}")
+            return None
+    
     def match_artist_name(self, name: str) -> Optional[Dict[str, Any]]:
         results = self.search_artist(name, limit=5)
         
         if not results:
             return None
         
-        # Try to find exact match first
         name_lower = name.lower().strip()
         for artist in results:
             if artist["name"].lower().strip() == name_lower:
                 return artist
         
-        # Return best result if no exact match
         return results[0]
     
     def _parse_artist(self, artist: Dict[str, Any]) -> Dict[str, Any]:
@@ -305,6 +346,25 @@ class SpotifyService:
             "artist_name": primary_artist.get("name"),
             "album_id": album.get("id") if album else None,
             "album_name": album.get("name") if album else None,
+        }
+    
+    def _parse_playlist(self, playlist: Dict[str, Any]) -> Dict[str, Any]:
+        """Parse playlist data from Spotify API."""
+        images = playlist.get("images", [])
+        image_url = images[0]["url"] if images else None
+        
+        owner = playlist.get("owner", {})
+        
+        return {
+            "spotify_id": playlist.get("id"),
+            "name": playlist.get("name"),
+            "description": playlist.get("description"),
+            "spotify_url": playlist.get("external_urls", {}).get("spotify"),
+            "image_url": image_url,
+            "owner_name": owner.get("display_name"),
+            "owner_id": owner.get("id"),
+            "total_tracks": playlist.get("tracks", {}).get("total"),
+            "public": playlist.get("public"),
         }
 
 
