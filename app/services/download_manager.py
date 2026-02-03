@@ -984,12 +984,15 @@ class DownloadManager:
             logger.info(f"   URL: {task.spotify_url}")
             logger.info(f"   Output: {task.output_path}")
             logger.info(f"   Services: {task.services}")
-            
+            logger.info(f"   Filename Format: {task.filename_format}")
+            logger.info(f"   Use Artist Subfolders: {task.use_artist_subfolders}")
+            logger.info(f"   Use Album Subfolders: {task.use_album_subfolders}")
+
             try:
                 # Replace sys.stdout and sys.stderr directly
                 sys.stdout = stdout_capture
                 sys.stderr = stderr_capture
-                
+
                 SpotiFLAC(
                     url=task.spotify_url,
                     output_dir=task.output_path,
