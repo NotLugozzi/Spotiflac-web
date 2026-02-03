@@ -1,8 +1,6 @@
 services:
   spotiflac-autowatcher:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/notlugozzi/spotiflac-web:latest
     container_name: spotiflac-web
     restart: unless-stopped
     ports:
