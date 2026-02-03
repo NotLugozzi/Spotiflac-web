@@ -1,6 +1,6 @@
 services:
   spotiflac-autowatcher:
-    image: ghcr.io/notlugozzi/spotiflac-web:latest
+    image: ghcr.io/notlugozzi/spotiflac-web:main
     container_name: spotiflac-web
     restart: unless-stopped
     ports:
