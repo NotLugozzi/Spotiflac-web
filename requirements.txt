@@ -14,8 +14,8 @@ spotipy==2.23.0
 # Audio Metadata
 mutagen==1.47.0
 
-# SpotiFLAC Download Engine (optional - install if available)
-SpotiFLAC
+# SpotiFLAC Download Engine (GitHub version with custom template support)
+git+https://github.com/Lenochxd/SpotiFLAC-Command-Line-Interface.git
 
 # File Watching
 watchdog==3.0.0
@@ -32,8 +32,7 @@ python-dotenv==1.0.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 
-# SpotiFLAC (install separately if not on PyPI)
-# SpotiFLAC
+# SpotiFLAC (now installed from GitHub above)
 
 # Security
 python-jose[cryptography]==3.3.0

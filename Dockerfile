@@ -6,11 +6,24 @@ WORKDIR /app
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Patch SpotiFLAC to support custom path templates
+RUN SPOTIFLAC_FILE=$(find /root/.local/lib/python* -name "SpotiFLAC.py" -path "*/SpotiFLAC/SpotiFLAC.py") && \
+    # Comment out album folder creation to let custom format control full path
+    sed -i '177,180s/^/#    /' "$SPOTIFLAC_FILE" && \
+    # Fix indentation of os.makedirs that was inside the if block
+    sed -i '181s/^        /    /' "$SPOTIFLAC_FILE" && \
+    # Add mkdir before rename to create parent directories
+    sed -i '506i\                                    os.makedirs(os.path.dirname(new_filepath), exist_ok=True)' "$SPOTIFLAC_FILE" && \
+    # Add album_artist support (main artist only, before comma)
+    sed -i '/"artist": sanitize_filename_component(track.artists),/a\        "album_artist": sanitize_filename_component(track.artists.split(",")[0].strip()),' "$SPOTIFLAC_FILE" && \
+    echo "SpotiFLAC patched successfully"
 
 
 # Production stage
