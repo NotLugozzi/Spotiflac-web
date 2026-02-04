@@ -809,9 +809,6 @@ async def get_settings_api():
         "music_library_paths": settings.music_library_paths,
         "download_path": settings.download_path,
         "spotiflac_services": settings.spotiflac_services,
-        "spotiflac_filename_format": settings.spotiflac_filename_format,
-        "spotiflac_use_artist_subfolders": settings.spotiflac_use_artist_subfolders,
-        "spotiflac_use_album_subfolders": settings.spotiflac_use_album_subfolders,
         "scan_interval_minutes": settings.scan_interval_minutes,
         "auto_scan_on_startup": settings.auto_scan_on_startup,
     }

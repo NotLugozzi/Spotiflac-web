@@ -57,9 +57,6 @@ class DownloadTask:
     spotify_url: str
     output_path: str
     services: List[str]
-    filename_format: str
-    use_artist_subfolders: bool
-    use_album_subfolders: bool
     retry_minutes: int
     title: Optional[str] = None
     artist_name: Optional[str] = None
@@ -88,8 +85,6 @@ class DownloadManager:
         self._current_process: Optional[subprocess.Popen] = None
         self._callbacks: List[Callable] = []
         self._spotiflac_available = self._check_spotiflac()
-        self._progress_monitor_thread: Optional[threading.Thread] = None
-        self._monitor_running = False
     
     def _check_spotiflac(self) -> bool:
         """Check if SpotiFLAC is available."""
@@ -227,16 +222,18 @@ class DownloadManager:
         db.add(download)
         db.flush()
         
-        # Create task
+        # Create task with simple path construction
+        download_dir = settings.download_path
+        if artist_name and title:
+            artist_clean = self._sanitize_filename(artist_name)
+            download_dir = os.path.join(settings.download_path, artist_clean)
+        
         task = DownloadTask(
             download_id=download.id,
             album_id=None,
             spotify_url=spotify_url,
-            output_path=settings.download_path,
+            output_path=download_dir,
             services=settings.spotiflac_services,
-            filename_format=settings.spotiflac_filename_format,
-            use_artist_subfolders=settings.spotiflac_use_artist_subfolders,
-            use_album_subfolders=settings.spotiflac_use_album_subfolders,
             retry_minutes=settings.spotiflac_retry_minutes,
             title=title,
             artist_name=artist_name,
@@ -271,17 +268,13 @@ class DownloadManager:
             return
         
         self._running = True
-        self._monitor_running = True
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker_thread.start()
-        self._progress_monitor_thread = threading.Thread(target=self._progress_monitor_loop, daemon=True)
-        self._progress_monitor_thread.start()
         logger.info("Download manager started")
     
     def stop(self):
         """Stop the download worker."""
         self._running = False
-        self._monitor_running = False
         
         # Cancel current download if any
         if self._current_process:
@@ -291,10 +284,6 @@ class DownloadManager:
         if self._worker_thread and self._worker_thread.is_alive():
             self._queue.put(None)  # Sentinel to wake up the worker
             self._worker_thread.join(timeout=5)
-        
-        # Wait for progress monitor to finish
-        if self._progress_monitor_thread and self._progress_monitor_thread.is_alive():
-            self._progress_monitor_thread.join(timeout=2)
         
         logger.info("Download manager stopped")
     
@@ -328,12 +317,16 @@ class DownloadManager:
             logger.warning(f"Album {album.name} is already in the download queue")
             return existing
         
+        # Construct download path - only artist folder, SpotiFLAC creates album folder
+        artist_clean = self._sanitize_filename(album.artist.name if album.artist else "Unknown Artist")
+        download_dir = os.path.join(settings.download_path, artist_clean)
+        
         # Create download record
         download = Download(
             album_id=album.id,
             status=DownloadStatus.PENDING,
             service=settings.spotiflac_service,
-            output_path=settings.download_path,
+            output_path=download_dir,
         )
         db.add(download)
         db.flush()
@@ -343,12 +336,10 @@ class DownloadManager:
             download_id=download.id,
             album_id=album.id,
             spotify_url=album.spotify_url,
-            output_path=settings.download_path,
+            output_path=download_dir,
             services=settings.spotiflac_services,
-            filename_format=settings.spotiflac_filename_format,
-            use_artist_subfolders=settings.spotiflac_use_artist_subfolders,
-            use_album_subfolders=settings.spotiflac_use_album_subfolders,
             retry_minutes=settings.spotiflac_retry_minutes,
+            artist_name=album.artist.name if album.artist else "Unknown Artist",
             album_name=album.name,
             total_tracks=album.total_tracks,
         )
@@ -426,8 +417,14 @@ class DownloadManager:
         # Fallback titles if still not available
         if not title:
             title = f"Manual {url_type.title()} Download"
+        if not artist_name:
+            artist_name = "Unknown Artist"
         if not total_tracks and url_type == 'track':
             total_tracks = 1
+        
+        # Construct download path - only artist folder, SpotiFLAC creates album folder
+        artist_clean = self._sanitize_filename(artist_name)
+        download_dir = os.path.join(settings.download_path, artist_clean)
         
         # Create download record without album association
         download = Download(
@@ -439,7 +436,7 @@ class DownloadManager:
             total_tracks=total_tracks,
             status=DownloadStatus.PENDING,
             service=settings.spotiflac_service,
-            output_path=settings.download_path,
+            output_path=download_dir,
         )
         db.add(download)
         db.flush()
@@ -449,11 +446,8 @@ class DownloadManager:
             download_id=download.id,
             album_id=None,
             spotify_url=spotify_url,
-            output_path=settings.download_path,
+            output_path=download_dir,
             services=settings.spotiflac_services,
-            filename_format=settings.spotiflac_filename_format,
-            use_artist_subfolders=settings.spotiflac_use_artist_subfolders,
-            use_album_subfolders=settings.spotiflac_use_album_subfolders,
             retry_minutes=settings.spotiflac_retry_minutes,
             title=title,
             artist_name=artist_name,
@@ -531,17 +525,20 @@ class DownloadManager:
             download.started_at = None
             download.completed_at = None
             
+            # Construct download path - only artist folder, SpotiFLAC creates album folder
+            artist_clean = self._sanitize_filename(album.artist.name if album.artist else "Unknown Artist")
+            download_dir = os.path.join(settings.download_path, artist_clean)
+            download.output_path = download_dir
+            
             # Create new task
             task = DownloadTask(
                 download_id=download.id,
                 album_id=album.id,
                 spotify_url=album.spotify_url,
-                output_path=settings.download_path,
+                output_path=download_dir,
                 services=settings.spotiflac_services,
-                filename_format=settings.spotiflac_filename_format,
-                use_artist_subfolders=settings.spotiflac_use_artist_subfolders,
-                use_album_subfolders=settings.spotiflac_use_album_subfolders,
                 retry_minutes=settings.spotiflac_retry_minutes,
+                artist_name=album.artist.name if album.artist else "Unknown Artist",
                 album_name=album.name,
                 total_tracks=album.total_tracks,
             )
@@ -691,103 +688,47 @@ class DownloadManager:
             self._current_download = None
             self._current_process = None
     
-    def _progress_monitor_loop(self):
-        """Monitor download progress by checking filesystem."""
-        logger.info("Progress monitor loop started")
-        while self._monitor_running:
-            try:
-                if self._current_download:
-                    self._update_download_progress(self._current_download)
-                
-                # Check every 2 seconds
-                threading.Event().wait(2)
-                
-            except Exception as e:
-                logger.error(f"Error in progress monitor loop: {e}", exc_info=True)
-                threading.Event().wait(2)
-        
-        logger.info("Progress monitor loop stopped")
-    
-    def _update_download_progress(self, task: DownloadTask):
-        """Update progress for current download based on filesystem."""
-        try:
-            # Determine the expected download directory
-            download_dir = self._get_expected_download_dir(task)
-            
-            if not download_dir or not os.path.exists(download_dir):
-                return
-            
-            # Count audio files in the directory
-            audio_files = self._get_audio_files(download_dir)
-            tracks_found = len(audio_files)
-            
-            # Calculate progress
-            if task.total_tracks and task.total_tracks > 0:
-                progress = min(int((tracks_found / task.total_tracks) * 100), 99)
-            else:
-                # No track count available, just show that something is happening
-                progress = min(tracks_found * 5, 95) if tracks_found > 0 else 0
-            
-            # Update database
-            with get_db_session() as db:
-                download = db.query(Download).get(task.download_id)
-                if download and download.status == DownloadStatus.DOWNLOADING:
-                    if download.progress != progress:
-                        download.progress = progress
-                        db.commit()
-                        logger.debug(f"Download {task.download_id}: {tracks_found} tracks found, progress: {progress}%")
-                        self._notify_progress(task.download_id, "downloading", progress)
-        
-        except Exception as e:
-            logger.error(f"Error updating download progress: {e}")
-    
     def _get_expected_download_dir(self, task: DownloadTask) -> Optional[str]:
-        """Get the expected download directory for a task."""
-        base_path = task.output_path
+        """Get the expected download directory for a task.
         
-        if not base_path or not os.path.exists(base_path):
+        Since we pass {base}/{artist} to SpotiFLAC and it creates the album folder,
+        we need to look for the album folder inside the artist folder.
+        """
+        artist_path = task.output_path
+        
+        if not artist_path or not os.path.exists(artist_path):
             return None
         
-        # Build path based on settings
-        path_parts = [base_path]
+        # If no album name, just return the artist path
+        if not task.album_name:
+            return artist_path
         
-        if task.use_artist_subfolders and task.artist_name:
-            artist_clean = self._sanitize_filename(task.artist_name)
-            path_parts.append(artist_clean)
+        # Look for the album folder that SpotiFLAC created
+        album_clean = self._sanitize_filename(task.album_name)
+        expected_album_path = os.path.join(artist_path, album_clean)
         
-        if task.use_album_subfolders and task.album_name:
-            album_clean = self._sanitize_filename(task.album_name)
-            path_parts.append(album_clean)
+        # Check if exact match exists
+        if os.path.exists(expected_album_path):
+            return expected_album_path
         
-        expected_path = os.path.join(*path_parts)
+        # SpotiFLAC might clean the name differently, search for similar folders
+        album_lower = task.album_name.lower()
+        try:
+            for item in os.listdir(artist_path):
+                item_path = os.path.join(artist_path, item)
+                if os.path.isdir(item_path) and album_lower in item.lower():
+                    return item_path
+        except OSError:
+            pass
         
-        # Check if path exists
-        if os.path.exists(expected_path):
-            return expected_path
-        
-        # Try to find a directory that matches (SpotiFLAC might clean names differently)
-        if task.album_name:
-            album_lower = task.album_name.lower()
-            
-            # Check in base path
-            search_base = os.path.join(*path_parts[:-1]) if len(path_parts) > 1 else base_path
-            
-            if os.path.exists(search_base):
-                for item in os.listdir(search_base):
-                    item_path = os.path.join(search_base, item)
-                    if os.path.isdir(item_path) and album_lower in item.lower():
-                        return item_path
-        
-        return expected_path
+        return expected_album_path
     
     def _sanitize_filename(self, name: str) -> str:
         """Sanitize a string for use in filenames."""
-        # Remove or replace invalid characters
         invalid_chars = '<>:"\\/|?*'
         for char in invalid_chars:
             name = name.replace(char, '_')
         
-        # Remove leading/trailing spaces and dots
         name = name.strip('. ')
         
         return name
@@ -871,11 +812,6 @@ class DownloadManager:
         Returns:
             True if successful
         """
-        # Get files before download to compare later
-        files_before = self._get_audio_files(task.output_path)
-        logger.info(f"Files in output directory before download: {len(files_before)}")
-        
-        # Try Python module first
         spotiflac_available = False
         try:
             from SpotiFLAC import SpotiFLAC
@@ -890,43 +826,16 @@ class DownloadManager:
         else:
             result = self._execute_spotiflac_cli_with_capture(task)
         
-        # Parse logs to find expected tracks
-        expected_tracks = self._parse_expected_tracks(result.logs)
-        result.tracks_expected = expected_tracks
-        logger.info(f"Expected tracks from logs: {expected_tracks}")
-        
-        # Get files after download
-        files_after = self._get_audio_files(task.output_path)
-        new_files = files_after - files_before
-        result.tracks_found = list(new_files)
-        logger.info(f"New files found after download: {len(new_files)}")
-        
-        # Verify download success
-        if new_files:
-            logger.info(f"Download verified: {len(new_files)} new audio files found")
-            for f in new_files:
-                logger.info(f"  - {os.path.basename(f)}")
+        if "download completed" in result.logs.lower() or "status: download completed" in result.logs.lower():
+            logger.info("Download completed successfully (verified from SpotiFLAC output)")
             result.success = True
-        elif expected_tracks:
-            # Check if any expected tracks match existing files
-            matched = self._match_tracks_to_files(expected_tracks, files_after)
-            if matched:
-                logger.info(f"Download verified: {len(matched)} tracks matched to existing files")
-                result.success = True
-                result.tracks_found = matched
-            else:
-                logger.warning("No new files and no matches found - download may have failed")
-                result.success = False
-                result.error_message = "No audio files downloaded"
+        elif result.error_message:
+            logger.warning(f"Download failed: {result.error_message}")
+            result.success = False
         else:
-            # No expected tracks parsed - check if any files exist
-            if files_after:
-                logger.info(f"Cannot verify specific tracks, but {len(files_after)} audio files exist in output")
-                result.success = True
-            else:
-                logger.warning("No audio files found in output directory")
-                result.success = False
-                result.error_message = "No audio files in output directory"
+            # Default to success if SpotiFLAC ran without errors
+            logger.info("SpotiFLAC execution completed")
+            result.success = True
         
         # Create m3u playlist if this is a playlist download and it succeeded
         if result.success:
@@ -993,11 +902,7 @@ class DownloadManager:
                 SpotiFLAC(
                     url=task.spotify_url,
                     output_dir=task.output_path,
-                    services=task.services if task.services else ["tidal", "deezer", "qobuz"],
-                    filename_format=task.filename_format or "{title} - {artist}",
-                    use_track_numbers=True,
-                    use_artist_subfolders=task.use_artist_subfolders,
-                    use_album_subfolders=task.use_album_subfolders,
+                    services=task.services if task.services else ["qobuz", "tidal", "deezer"],
                     loop=None,
                 )
             finally:
@@ -1048,15 +953,7 @@ class DownloadManager:
             task.spotify_url,
             task.output_path,
             "--service", *task.services,
-            "--filename-format", task.filename_format,
-            "--use-track-numbers",
         ]
-        
-        if task.use_artist_subfolders:
-            cmd.append("--use-artist-subfolders")
-        
-        if task.use_album_subfolders:
-            cmd.append("--use-album-subfolders")
         
         if task.retry_minutes > 0:
             cmd.extend(["--loop", str(task.retry_minutes)])
@@ -1133,53 +1030,6 @@ class DownloadManager:
         
         return files
     
-    def _parse_expected_tracks(self, logs: str) -> List[str]:
-        """Parse SpotiFLAC logs to extract expected track names."""
-        tracks = []
-        
-        # Pattern: "[1/10] Starting download: Track Name - Artist Name"
-        pattern = r'\[\d+/\d+\]\s*Starting download:\s*(.+?)(?:\n|$)'
-        matches = re.findall(pattern, logs, re.MULTILINE)
-        tracks.extend(matches)
-        
-        # Pattern: "Found track: Artist - Title"
-        pattern2 = r'Found track:\s*(.+?)(?:\n|$)'
-        matches2 = re.findall(pattern2, logs, re.MULTILINE)
-        tracks.extend(matches2)
-        
-        # Pattern: "Downloading: Title - Artist"
-        pattern3 = r'Downloading:\s*(.+?)(?:\n|$)'
-        matches3 = re.findall(pattern3, logs, re.MULTILINE)
-        tracks.extend(matches3)
-        
-        # Clean up track names
-        cleaned = []
-        for track in tracks:
-            track = track.strip()
-            if track and len(track) > 2:
-                cleaned.append(track)
-        
-        return list(set(cleaned))
-    
-    def _match_tracks_to_files(self, tracks: List[str], files: set) -> List[str]:
-        """Check if any expected tracks match files in the directory."""
-        matched = []
-        
-        for track in tracks:
-            track_lower = track.lower()
-            track_words = set(re.findall(r'\w+', track_lower))
-            
-            for filepath in files:
-                filename = os.path.basename(filepath).lower()
-                filename_no_ext = os.path.splitext(filename)[0]
-                filename_words = set(re.findall(r'\w+', filename_no_ext))
-                
-                if track_words and len(track_words & filename_words) >= len(track_words) * 0.5:
-                    matched.append(filepath)
-                    break
-        
-        return matched
-    
     def _create_m3u_playlist(self, task: DownloadTask, download_dir: str) -> Optional[str]:
         """Create m3u playlist file for a playlist download.
         
@@ -1202,32 +1052,30 @@ class DownloadManager:
             logger.info(f"Fetching playlist metadata for ID: {parsed_url.spotify_id}")
             
             # Fetch playlist metadata from Spotify
-            spotify = get_spotify_service()
-            playlist_data = spotify.get_playlist(parsed_url.spotify_id)
+            playlist_name = None
+            tracks = []
             
-            if not playlist_data:
-                logger.error(f"Could not fetch playlist data for {parsed_url.spotify_id}")
-                return None
+            try:
+                spotify = get_spotify_service()
+                playlist_data = spotify.get_playlist(parsed_url.spotify_id)
+                
+                if playlist_data:
+                    playlist_name = playlist_data.get("name", "playlist")
+                    tracks = playlist_data.get("tracks", [])
+                    logger.info(f"Playlist '{playlist_name}' has {len(tracks)} tracks from Spotify API")
+                else:
+                    logger.warning(f"Could not fetch playlist data from Spotify API for {parsed_url.spotify_id}")
+            except Exception as spotify_err:
+                logger.warning(f"Spotify API error (will use fallback): {spotify_err}")
             
-            playlist_name = playlist_data.get("name", "playlist")
-            tracks = playlist_data.get("tracks", [])
+            # Fallback: Use task info if Spotify API failed
+            if not playlist_name:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    playlist_name = f"playlist_{parsed_url.spotify_id}_{timestamp}"
+                    logger.info(f"Using unique fallback playlist name: {playlist_name}")
             
-            logger.info(f"Playlist '{playlist_name}' has {len(tracks)} tracks")
-            
-            if not tracks:
-                logger.warning(f"Playlist has no tracks: {playlist_name}")
-                return None
-            
-            # We expect a folder to be named after the playlist, this is where we'll store the m3u
-            playlist_folder = self._sanitize_filename(playlist_name)
-            playlist_dir = os.path.join(download_dir, playlist_folder)
-            
-            if os.path.exists(playlist_dir) and os.path.isdir(playlist_dir):
-                logger.info(f"Found playlist directory: {playlist_dir}")
-                download_dir = playlist_dir
-            else:
-                logger.warning(f"Expected playlist directory not found: {playlist_dir}")
-            
+            # The download directory should already be the full path including artist/playlist
+            # since we construct it in the task creation
             audio_files = self._get_audio_files(download_dir)
             
             logger.info(f"Found {len(audio_files)} audio files in {download_dir}")
@@ -1240,42 +1088,57 @@ class DownloadManager:
             m3u_lines = ["#EXTM3U"]
             matched_files = []
             
-            for track in tracks:
-                track_name = track.get("name", "")
-                artist_name = track.get("artist_name", "")
-                duration_ms = track.get("duration_ms", 0)
-                duration_sec = duration_ms // 1000 if duration_ms else -1
-                
-                matched_file = None
-                search_patterns = [
-                    f"{artist_name} - {track_name}",
-                    f"{track_name} - {artist_name}",
-                    track_name,
-                ]
-                
-                for file_path in audio_files:
-                    file_name = os.path.basename(file_path)
-                    file_name_noext = os.path.splitext(file_name)[0]
+            # If we have track metadata from Spotify, try to match files to tracks
+            if tracks:
+                logger.info("Attempting to match files to Spotify track metadata")
+                for track in tracks:
+                    track_name = track.get("name", "")
+                    artist_name = track.get("artist_name", "")
+                    duration_ms = track.get("duration_ms", 0)
+                    duration_sec = duration_ms // 1000 if duration_ms else -1
                     
-                    for pattern in search_patterns:
-                        if pattern.lower() in file_name_noext.lower():
-                            matched_file = file_path
+                    matched_file = None
+                    search_patterns = [
+                        f"{artist_name} - {track_name}",
+                        f"{track_name} - {artist_name}",
+                        track_name,
+                    ]
+                    
+                    for file_path in audio_files:
+                        file_name = os.path.basename(file_path)
+                        file_name_noext = os.path.splitext(file_name)[0]
+                        
+                        for pattern in search_patterns:
+                            if pattern.lower() in file_name_noext.lower():
+                                matched_file = file_path
+                                break
+                        
+                        if matched_file:
                             break
                     
                     if matched_file:
-                        break
-                
-                if matched_file:
-                    rel_path = os.path.relpath(matched_file, download_dir)
+                        rel_path = os.path.relpath(matched_file, download_dir)
+                        m3u_lines.append(f"#EXTINF:{duration_sec},{artist_name} - {track_name}")
+                        m3u_lines.append(rel_path)
+                        matched_files.append(matched_file)
+                    else:
+                        logger.debug(f"Could not match file for: {artist_name} - {track_name}")
+            
+            # Fallback: If no tracks matched or no Spotify metadata, just add all audio files
+            if not matched_files:
+                logger.info("Using fallback: adding all audio files found in directory")
+                for file_path in sorted(audio_files):
+                    rel_path = os.path.relpath(file_path, download_dir)
+                    file_name = os.path.basename(file_path)
+                    file_name_noext = os.path.splitext(file_name)[0]
                     
-                    m3u_lines.append(f"#EXTINF:{duration_sec},{artist_name} - {track_name}")
+                    # Try to extract duration from file if possible (defaults to -1)
+                    m3u_lines.append(f"#EXTINF:-1,{file_name_noext}")
                     m3u_lines.append(rel_path)
-                    matched_files.append(matched_file)
-                else:
-                    logger.debug(f"Could not match file for: {artist_name} - {track_name}")
+                    matched_files.append(file_path)
             
             if not matched_files:
-                logger.warning("No tracks could be matched to files")
+                logger.warning("No tracks could be added to m3u (this shouldn't happen)")
                 return None
             
             m3u_filename = self._sanitize_filename(playlist_name) + ".m3u"

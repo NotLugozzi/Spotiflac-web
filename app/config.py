@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     
     # SpotiFLAC
     spotiflac_service: str = Field(default="tidal,qobuz,deezer")
-    spotiflac_filename_format: str = Field(default="{artist}/{album}/{track_number} - {title}")
-    spotiflac_use_artist_subfolders: bool = Field(default=True)
-    spotiflac_use_album_subfolders: bool = Field(default=True)
     spotiflac_retry_minutes: int = Field(default=30)
     
     # Authentication
