@@ -8,6 +8,8 @@ import glob
 import logging
 import threading
 import queue
+import time
+import json
 from typing import Optional, List, Dict, Any, Callable, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -70,6 +72,7 @@ class DownloadResult:
     success: bool
     tracks_expected: List[str] = field(default_factory=list)
     tracks_found: List[str] = field(default_factory=list)
+    tracks_failed: List[Dict[str, str]] = field(default_factory=list)  # {name, error}
     error_message: Optional[str] = None
     logs: str = ""
 
@@ -602,7 +605,7 @@ class DownloadManager:
         logger.info("Download worker loop stopped")
     
     def _process_download(self, task: DownloadTask):
-        """Process a single download task."""
+        """Process a single download task with retry mechanism."""
         self._current_download = task
         
         try:
@@ -622,10 +625,49 @@ class DownloadManager:
         except Exception as e:
             logger.error(f"Error updating download status to DOWNLOADING: {e}")
         
+        # Retry loop with exponential backoff
+        max_retries = 3
+        retry_count = 0
+        success = False
+        last_error = None
+        
+        while retry_count <= max_retries and not success:
+            try:
+                if retry_count > 0:
+                    # Calculate exponential backoff: 2^retry_count seconds
+                    backoff_seconds = 2 ** retry_count
+                    logger.info(f"Retry attempt {retry_count}/{max_retries} for download {task.download_id}")
+                    logger.info(f"Waiting {backoff_seconds} seconds before retry (exponential backoff)...")
+                    
+                    # Update download record with retry info
+                    with get_db_session() as db:
+                        download = db.query(Download).get(task.download_id)
+                        if download:
+                            download.retry_count = retry_count
+                            download.current_track_name = f"Retrying... (attempt {retry_count}/{max_retries})"
+                            db.commit()
+                    
+                    time.sleep(backoff_seconds)
+                
+                # Execute SpotiFLAC
+                result = self._execute_spotiflac(task)
+                
+                if result.success:
+                    success = True
+                    last_error = None
+                    break
+                else:
+                    last_error = result.error_message or "Download failed"
+                    retry_count += 1
+                    logger.warning(f"Download attempt {retry_count} failed: {last_error}")
+                    
+            except Exception as e:
+                last_error = str(e)
+                retry_count += 1
+                logger.error(f"Download attempt {retry_count} raised exception: {e}", exc_info=True)
+        
+        # Update final status
         try:
-            # Execute SpotiFLAC
-            success = self._execute_spotiflac(task)
-            
             with get_db_session() as db:
                 download = db.query(Download).get(task.download_id)
                 
@@ -633,17 +675,28 @@ class DownloadManager:
                     logger.error(f"Download record disappeared: {task.download_id}")
                     return
                 
+                download.retry_count = retry_count
+                
                 if success:
                     download.status = DownloadStatus.COMPLETED
                     download.progress = 100
                     download.error_message = None
                     download.current_track_name = "Download complete"
                     
-                    # Mark album as owned if linked
+                    # Verify completeness and mark album if incomplete
+                    incomplete_info = self._verify_download_completeness(task, download)
+                    if incomplete_info and incomplete_info.get('is_incomplete'):
+                        logger.warning(f"Download completed but album is incomplete: {incomplete_info}")
+                        download.error_message = f"Incomplete: {len(incomplete_info.get('missing_tracks', []))} track(s) failed"
+                    
+                    # Mark album as owned (or potentially incomplete)
                     if download.album_id:
                         album = db.query(Album).get(download.album_id)
                         if album:
                             album.is_owned = True
+                            if incomplete_info and incomplete_info.get('is_incomplete'):
+                                album.is_incomplete = True
+                                album.missing_tracks = incomplete_info.get('missing_tracks', [])
                     
                     logger.info(f"Download completed: {task.download_id}")
                     self._notify_progress(task.download_id, "completed", 100)
@@ -658,10 +711,9 @@ class DownloadManager:
                         logger.error(f"Failed to trigger library scan: {scan_err}")
                 else:
                     download.status = DownloadStatus.FAILED
-                    if not download.error_message:
-                        download.error_message = "Download failed - check logs for details"
+                    download.error_message = last_error or f"Download failed after {retry_count} attempts"
                     
-                    logger.error(f"Download failed: {task.download_id}")
+                    logger.error(f"Download failed after {retry_count} attempts: {task.download_id}")
                     self._notify_progress(task.download_id, "failed", 0, download.error_message)
                 
                 download.completed_at = datetime.utcnow()
@@ -687,6 +739,84 @@ class DownloadManager:
         finally:
             self._current_download = None
             self._current_process = None
+    
+    def _verify_download_completeness(self, task: DownloadTask, download: Download) -> Optional[Dict[str, Any]]:
+        """
+        Verify if the download is complete by checking expected vs actual tracks.
+        
+        Args:
+            task: Download task containing album info
+            download: Download record with failure information
+            
+        Returns:
+            Dict with completeness info, or None if verification not possible
+        """
+        try:
+            # Get expected track count
+            expected_tracks = task.total_tracks or download.total_tracks
+            if not expected_tracks:
+                logger.warning("Cannot verify completeness: no expected track count")
+                return None
+            
+            # Get failed tracks from download record
+            failed_tracks = download.failed_tracks or []
+            if isinstance(failed_tracks, str):
+                failed_tracks = json.loads(failed_tracks) if failed_tracks else []
+            
+            # Count downloaded files in the directory
+            download_dir = self._get_expected_download_dir(task)
+            if not download_dir or not os.path.exists(download_dir):
+                logger.warning(f"Cannot verify completeness: download directory not found: {download_dir}")
+                # If we have failed tracks but no directory, definitely incomplete
+                if failed_tracks:
+                    return {
+                        'is_incomplete': True,
+                        'expected': expected_tracks,
+                        'found': 0,
+                        'missing_tracks': [f['name'] for f in failed_tracks]
+                    }
+                return None
+            
+            # Count audio files
+            audio_files = self._get_audio_files(download_dir)
+            actual_track_count = len(audio_files)
+            
+            logger.info(f"Completeness check: Expected {expected_tracks} tracks, found {actual_track_count} files, {len(failed_tracks)} failures recorded")
+            
+            # Determine if incomplete
+            is_incomplete = False
+            missing_tracks = []
+            
+            # If we have explicit failures, mark as incomplete
+            if failed_tracks:
+                is_incomplete = True
+                missing_tracks = [f['name'] for f in failed_tracks]
+            # If file count doesn't match expected (with some tolerance for bonus tracks)
+            elif actual_track_count < expected_tracks:
+                is_incomplete = True
+                missing_count = expected_tracks - actual_track_count
+                missing_tracks = [f"Unknown track #{i+1}" for i in range(missing_count)]
+            
+            if is_incomplete:
+                logger.warning(f"Album incomplete: {len(missing_tracks)} track(s) missing")
+                return {
+                    'is_incomplete': True,
+                    'expected': expected_tracks,
+                    'found': actual_track_count,
+                    'missing_tracks': missing_tracks
+                }
+            else:
+                logger.info("Album download is complete!")
+                return {
+                    'is_incomplete': False,
+                    'expected': expected_tracks,
+                    'found': actual_track_count,
+                    'missing_tracks': []
+                }
+                
+        except Exception as e:
+            logger.error(f"Error verifying download completeness: {e}", exc_info=True)
+            return None
     
     def _get_expected_download_dir(self, task: DownloadTask) -> Optional[str]:
         """Get the expected download directory for a task.
@@ -737,6 +867,7 @@ class DownloadManager:
         """
         Parse spotiflac output line and update progress.
         Extracts track progress from lines like: [1/17] Starting download: Damned - Kevin Sherwood
+        Also detects track failures from error messages.
         
         Args:
             line: Output line from spotiflac
@@ -796,11 +927,60 @@ class DownloadManager:
                         logger.error(f"  Download {download_id} not found in database!")
             except Exception as e:
                 logger.error(f"Unable to update track progress: {e}", exc_info=True)
-        else:
-            if 'completed' in line.lower() or 'finished' in line.lower() or 'done' in line.lower():
-                logger.info(f"[PARSER] Possible completion line: {line[:100]}")
-            elif 'downloading' in line.lower() or 'searching' in line.lower():
-                logger.debug(f"[PARSER] Activity line (no match): {line[:100]}")
+        
+        # Detect track failures - look for error patterns
+        # Common patterns: "Failed to download", "Error:", "Could not find", "Track not available"
+        error_patterns = [
+            r'(?:Failed|Error|Unable) to (?:download|find).*?[:\-]\s*(.+)',
+            r'Track not (?:available|found)[:\-]\s*(.+)',
+            r'Could not (?:download|find)[:\-]\s*(.+)',
+            r'\[ERROR\]\s*(.+)',
+            r'Exception.*?[:\-]\s*(.+)',
+        ]
+        
+        for pattern in error_patterns:
+            error_match = re.search(pattern, line, re.IGNORECASE)
+            if error_match:
+                error_detail = error_match.group(1).strip() if error_match.lastindex else line.strip()
+                logger.warning(f"✗ DETECTED track failure: {error_detail[:100]}")
+                
+                # Try to extract track name from the line if possible
+                track_name = "Unknown track"
+                track_name_match = re.search(r'[:\-]\s*([^:\-]+?)(?:\s*-\s*[^:\-]+)?$', error_detail)
+                if track_name_match:
+                    track_name = track_name_match.group(1).strip()
+                
+                # Store failed track in download record
+                try:
+                    with get_db_session() as db:
+                        download = db.query(Download).get(download_id)
+                        if download:
+                            failed_tracks = download.failed_tracks or []
+                            if isinstance(failed_tracks, str):
+                                failed_tracks = json.loads(failed_tracks) if failed_tracks else []
+                            
+                            # Add to failed tracks if not already there
+                            failed_entry = {
+                                "name": track_name,
+                                "error": error_detail[:200],  # Limit error message length
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                            
+                            # Avoid duplicates
+                            if not any(f.get('name') == track_name for f in failed_tracks):
+                                failed_tracks.append(failed_entry)
+                                download.failed_tracks = failed_tracks
+                                db.commit()
+                                logger.info(f"Recorded failed track: {track_name}")
+                except Exception as e:
+                    logger.error(f"Unable to record failed track: {e}", exc_info=True)
+                break
+        
+        # Log other relevant lines
+        if 'completed' in line.lower() or 'finished' in line.lower() or 'done' in line.lower():
+            logger.info(f"[PARSER] Possible completion line: {line[:100]}")
+        elif 'downloading' in line.lower() or 'searching' in line.lower():
+            logger.debug(f"[PARSER] Activity line (no match): {line[:100]}")
     
     def _execute_spotiflac(self, task: DownloadTask) -> bool:
         """

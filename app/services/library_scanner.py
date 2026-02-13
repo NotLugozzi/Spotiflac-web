@@ -151,6 +151,91 @@ class LibraryScanner:
             self._observer = None
             logger.info("File watcher stopped")
     
+    def check_all_albums_completeness(
+        self, 
+        only_incomplete: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Check completeness of all owned albums in the library.
+        
+        Args:
+            only_incomplete: If True, only check albums already marked as incomplete
+            
+        Returns:
+            Dict with scan results: {
+                'checked': int,
+                'complete': int,
+                'incomplete': int,
+                'errors': int,
+                'incomplete_albums': List[Dict]
+            }
+        """
+        with get_db_session() as db:
+            # Get albums to check
+            query = db.query(Album).filter(
+                Album.is_owned == True,
+                Album.spotify_id.isnot(None)
+            )
+            
+            if only_incomplete:
+                query = query.filter(Album.is_incomplete == True)
+            
+            albums = query.all()
+            
+            results = {
+                'checked': 0,
+                'complete': 0,
+                'incomplete': 0,
+                'errors': 0,
+                'incomplete_albums': []
+            }
+            
+            logger.info(f"Checking completeness for {len(albums)} albums...")
+            
+            for album in albums:
+                try:
+                    completeness = self.check_album_completeness(db, album)
+                    results['checked'] += 1
+                    
+                    if 'error' in completeness:
+                        results['errors'] += 1
+                        logger.warning(f"Error checking {album.name}: {completeness['error']}")
+                        continue
+                    
+                    is_complete = completeness['is_complete']
+                    album.is_incomplete = not is_complete
+                    
+                    if not is_complete:
+                        results['incomplete'] += 1
+                        album.missing_tracks = completeness.get('missing_tracks', [])
+                        results['incomplete_albums'].append({
+                            'id': album.id,
+                            'name': album.name,
+                            'artist_name': album.artist.name if album.artist else None,
+                            'missing_tracks': len(album.missing_tracks)
+                        })
+                        logger.info(
+                            f"Album '{album.name}' is incomplete: "
+                            f"{len(album.missing_tracks)} missing tracks"
+                        )
+                    else:
+                        results['complete'] += 1
+                        album.missing_tracks = []
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    results['errors'] += 1
+                    logger.error(f"Error checking album {album.name}: {e}", exc_info=True)
+                    db.rollback()
+            
+            logger.info(
+                f"Completeness check finished: {results['complete']} complete, "
+                f"{results['incomplete']} incomplete, {results['errors']} errors"
+            )
+            
+            return results
+    
     def scan_library(self, paths: Optional[List[str]] = None) -> LibraryScan:
         """
         Perform a full library scan.
@@ -500,6 +585,116 @@ class LibraryScanner:
             db.commit()
             logger.info(f"Database updated after file deletion: {file_path}")
     
+    def check_album_completeness(self, db: Session, album: Album) -> Dict[str, Any]:
+        """
+        Check if an album in the library is complete by comparing local tracks 
+        against Spotify's track list.
+        
+        Args:
+            db: Database session
+            album: Album to check
+            
+        Returns:
+            Dict with completeness info: {
+                'is_complete': bool,
+                'expected_tracks': int,
+                'found_tracks': int,
+                'missing_tracks': List[str],
+                'extra_tracks': int
+            }
+        """
+        if not album.spotify_id:
+            logger.warning(f"Cannot check completeness for album without Spotify ID: {album.name}")
+            return {
+                'is_complete': None,
+                'expected_tracks': 0,
+                'found_tracks': 0,
+                'missing_tracks': [],
+                'extra_tracks': 0,
+                'error': 'Album has no Spotify ID'
+            }
+        
+        # Get Spotify track list
+        try:
+            spotify_data = self.spotify_service.get_album(album.spotify_id)
+            if not spotify_data:
+                logger.error(f"Could not fetch album from Spotify: {album.name}")
+                return {
+                    'is_complete': None,
+                    'error': 'Could not fetch album from Spotify'
+                }
+            
+            spotify_tracks = spotify_data.get('tracks', [])
+            expected_count = len(spotify_tracks)
+            
+            # Get local tracks
+            local_tracks = db.query(Track).filter(
+                Track.album_id == album.id,
+                Track.local_path.isnot(None)
+            ).all()
+            
+            found_count = len(local_tracks)
+            
+            # Build a set of normalized track names from Spotify
+            spotify_track_names = set()
+            spotify_track_map = {}  # Map normalized name to original
+            
+            for track in spotify_tracks:
+                track_name = track.get('name', '')
+                normalized = self._normalize_track_name(track_name)
+                spotify_track_names.add(normalized)
+                spotify_track_map[normalized] = track_name
+            
+            # Build a set of normalized local track names
+            local_track_names = set()
+            for track in local_tracks:
+                normalized = self._normalize_track_name(track.name)
+                local_track_names.add(normalized)
+            
+            # Find missing tracks
+            missing_normalized = spotify_track_names - local_track_names
+            missing_tracks = [spotify_track_map[name] for name in missing_normalized]
+            
+            # Calculate extra tracks (local tracks not in Spotify list)
+            extra_count = len(local_track_names - spotify_track_names)
+            
+            is_complete = len(missing_tracks) == 0 and found_count >= expected_count
+            
+            logger.info(
+                f"Completeness check for '{album.name}': "
+                f"Expected {expected_count}, Found {found_count}, "
+                f"Missing {len(missing_tracks)}, Extra {extra_count}"
+            )
+            
+            return {
+                'is_complete': is_complete,
+                'expected_tracks': expected_count,
+                'found_tracks': found_count,
+                'missing_tracks': missing_tracks,
+                'extra_tracks': extra_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking album completeness: {e}", exc_info=True)
+            return {
+                'is_complete': None,
+                'error': str(e)
+            }
+    
+    def _normalize_track_name(self, name: str) -> str:
+        """
+        Normalize track name for comparison by removing special characters,
+        extra spaces, and converting to lowercase.
+        """
+        import re
+        # Remove content in parentheses/brackets (often remasters, versions, etc.)
+        name = re.sub(r'\s*[\(\[][^\)\]]*[\)\]]', '', name)
+        # Remove special characters except spaces
+        name = re.sub(r'[^\w\s]', '', name)
+        # Convert to lowercase and strip extra spaces
+        name = ' '.join(name.lower().split())
+        return name
+
     def sync_artist_with_spotify(self, db: Session, artist: Artist) -> bool:
         """
         Sync an artist's data with Spotify.

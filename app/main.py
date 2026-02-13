@@ -51,6 +51,13 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"Starting {settings.app_name}...")
     
+    # Run database migrations first
+    try:
+        from migrations.runner import run_migrations
+        run_migrations()
+    except Exception as e:
+        logger.warning(f"Could not run migrations: {e}")
+    
     # Initialize database
     init_db()
     logger.info("Database initialized")

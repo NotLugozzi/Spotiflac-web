@@ -33,6 +33,9 @@
         <p class="text-sm text-gray-400 truncate">
             {{ download.artist_name or 'Unknown Artist' }}
             {% if download.album_name %} • {{ download.album_name }}{% endif %}
+            {% if download.retry_count and download.retry_count > 0 %}
+            <span class="text-yellow-400"> • Retry {{ download.retry_count }}/{{ download.max_retries }}</span>
+            {% endif %}
         </p>
         {% if download.status.value == 'downloading' %}
             {% if download.current_track_name %}
@@ -53,6 +56,19 @@
         {% endif %}
         {% if download.error_message %}
         <p class="text-sm text-red-400 mt-1">{{ download.error_message }}</p>
+        {% endif %}
+        {% if download.failed_tracks and download.failed_tracks|length > 0 %}
+        <details class="text-xs text-gray-400 mt-1">
+            <summary class="cursor-pointer hover:text-gray-300">{{ download.failed_tracks|length }} track(s) failed</summary>
+            <ul class="mt-1 ml-4 list-disc space-y-0.5">
+                {% for track in download.failed_tracks[:5] %}
+                <li>{{ track.name }}</li>
+                {% endfor %}
+                {% if download.failed_tracks|length > 5 %}
+                <li>... and {{ download.failed_tracks|length - 5 }} more</li>
+                {% endif %}
+            </ul>
+        </details>
         {% endif %}
     </div>
     

@@ -102,6 +102,8 @@ class Album(Base):
     local_path = Column(String(1000), nullable=True)
     is_owned = Column(Boolean, default=False)
     is_wanted = Column(Boolean, default=False)
+    is_incomplete = Column(Boolean, default=False)
+    missing_tracks = Column(JSON, default=list)  # List of missing track names/numbers
     
     # Foreign keys
     artist_id = Column(Integer, ForeignKey("artists.id"), nullable=False)
@@ -132,6 +134,8 @@ class Album(Base):
             "local_path": self.local_path,
             "is_owned": self.is_owned,
             "is_wanted": self.is_wanted,
+            "is_incomplete": self.is_incomplete,
+            "missing_tracks": self.missing_tracks or [],
             "artist_id": self.artist_id,
             "artist_name": self.artist.name if self.artist else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -227,6 +231,11 @@ class Download(Base):
     current_track_number = Column(Integer, nullable=True) 
     total_tracks = Column(Integer, nullable=True)
     
+    # Retry and failure tracking
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    failed_tracks = Column(JSON, default=list)  # List of failed track info {name, error, attempts}
+    
     album_id = Column(Integer, ForeignKey("albums.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
@@ -266,6 +275,9 @@ class Download(Base):
             "current_track_name": self.current_track_name,
             "current_track_number": self.current_track_number,
             "total_tracks": self.total_tracks,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "failed_tracks": self.failed_tracks or [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,

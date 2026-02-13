@@ -26,6 +26,14 @@
         <span class="px-2 py-1 rounded bg-gray-700">
             {{ album.track_count or 0 }} track{% if album.track_count != 1 %}s{% endif %}
         </span>
+        {% if album.is_owned %}
+        <span class="px-2 py-1 rounded bg-green-700 text-white">✓ Owned</span>
+        {% endif %}
+        {% if album.is_incomplete %}
+        <span class="px-2 py-1 rounded bg-yellow-600 text-white" title="{{ album.missing_tracks|length }} track(s) missing">
+            ⚠ Incomplete
+        </span>
+        {% endif %}
         {% if album.spotify_id %}
         <span class="text-spotify-green">● Spotify</span>
         {% endif %}

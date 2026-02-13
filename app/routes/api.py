@@ -417,7 +417,7 @@ async def refresh_album_from_spotify(
     album_id: int,
     db: Session = Depends(get_db)
 ):
-    """Refresh album data from Spotify."""
+    """Refresh album data from Spotify and check completeness."""
     album = db.query(Album).filter(Album.id == album_id).first()
     
     if not album:
@@ -439,7 +439,7 @@ async def refresh_album_from_spotify(
     album.total_tracks = spotify_data.get("total_tracks")
     album.label = spotify_data.get("label")
     
-    # Update/create tracks
+    # Update/create tracks from Spotify
     for track_data in spotify_data.get("tracks", []):
         track = db.query(Track).filter(
             Track.spotify_id == track_data.get("spotify_id")
@@ -462,7 +462,94 @@ async def refresh_album_from_spotify(
     
     db.commit()
     
+    # Check completeness if album is owned
+    if album.is_owned:
+        scanner = get_library_scanner()
+        completeness = scanner.check_album_completeness(db, album)
+        
+        if completeness.get('is_complete') is not None:
+            is_complete = completeness['is_complete']
+            album.is_incomplete = not is_complete
+            
+            if not is_complete:
+                album.missing_tracks = completeness.get('missing_tracks', [])
+                logger.info(
+                    f"Album '{album.name}' marked as incomplete: "
+                    f"{len(album.missing_tracks)} missing tracks"
+                )
+            else:
+                album.missing_tracks = []
+                logger.info(f"Album '{album.name}' is complete!")
+            
+            db.commit()
+    
     return album.to_dict()
+
+
+@router.post("/albums/{album_id}/check-completeness")
+async def check_album_completeness(
+    album_id: int,
+    db: Session = Depends(get_db)
+):
+    """Check if an album is complete by comparing local files against Spotify."""
+    album = db.query(Album).filter(Album.id == album_id).first()
+    
+    if not album:
+        raise HTTPException(status_code=404, detail="Album not found")
+    
+    if not album.spotify_id:
+        raise HTTPException(status_code=400, detail="Album has no Spotify ID")
+    
+    if not album.is_owned:
+        raise HTTPException(status_code=400, detail="Album is not in your library")
+    
+    scanner = get_library_scanner()
+    completeness = scanner.check_album_completeness(db, album)
+    
+    if 'error' in completeness:
+        raise HTTPException(status_code=500, detail=completeness['error'])
+    
+    # Update album status
+    is_complete = completeness['is_complete']
+    album.is_incomplete = not is_complete
+    
+    if not is_complete:
+        album.missing_tracks = completeness.get('missing_tracks', [])
+    else:
+        album.missing_tracks = []
+    
+    db.commit()
+    
+    return {
+        "album": album.to_dict(),
+        "completeness": completeness
+    }
+
+
+@router.post("/albums/check-all-completeness")
+async def check_all_albums_completeness(
+    only_incomplete: bool = Query(False, description="Only check albums already marked as incomplete"),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Check completeness of all owned albums in the library.
+    This can be a long-running operation for large libraries.
+    """
+    def run_check():
+        scanner = get_library_scanner()
+        return scanner.check_all_albums_completeness(only_incomplete=only_incomplete)
+    
+    # Run in background for large libraries
+    if background_tasks:
+        background_tasks.add_task(run_check)
+        return {
+            "message": "Completeness check started in background",
+            "status": "running"
+        }
+    else:
+        results = run_check()
+        return results
 
 
 # ============================================================================

@@ -109,6 +109,78 @@
         </div>
     </div>
     
+    <!-- Incomplete Album Warning -->
+    {% if album.is_incomplete %}
+    <div class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+        <div class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <div class="flex-1">
+                <h3 class="text-yellow-400 font-semibold mb-1">Incomplete Album</h3>
+                <p class="text-sm text-gray-300 mb-2">
+                    This album download is incomplete. {{ album.missing_tracks|length }} track(s) failed to download.
+                </p>
+                {% if album.missing_tracks and album.missing_tracks|length > 0 %}
+                <details class="text-sm text-gray-400">
+                    <summary class="cursor-pointer hover:text-gray-300">Show missing tracks</summary>
+                    <ul class="mt-2 ml-4 list-disc space-y-1">
+                        {% for track_name in album.missing_tracks %}
+                        <li>{{ track_name }}</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+                {% endif %}
+                <div class="mt-3 flex gap-2">
+                    <button 
+                        hx-post="/api/downloads"
+                        hx-vals='{"url": "{{ album.spotify_url }}"}'
+                        hx-swap="none"
+                        data-success-message="Retry queued"
+                        class="px-4 py-2 bg-yellow-600 text-white text-sm rounded-md hover:bg-yellow-500 transition-colors"
+                    >
+                        Retry Download
+                    </button>
+                    <button 
+                        hx-post="/api/albums/{{ album.id }}/check-completeness"
+                        hx-swap="none"
+                        data-success-message="Completeness checked"
+                        class="px-4 py-2 bg-dark-surface text-gray-300 text-sm rounded-md hover:bg-dark-hover transition-colors border border-gray-700"
+                    >
+                        Recheck Completeness
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% elif album.is_owned %}
+    <!-- Completeness Check for Owned Albums -->
+    <div class="bg-dark-card border border-gray-800 rounded-lg p-4">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <svg class="w-5 h-5 text-spotify-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <div>
+                    <p class="text-sm font-medium text-gray-300">Album in your library</p>
+                    <p class="text-xs text-gray-500">Verify all tracks are present</p>
+                </div>
+            </div>
+            <button 
+                hx-post="/api/albums/{{ album.id }}/check-completeness"
+                hx-swap="none"
+                data-success-message="Completeness checked"
+                class="px-4 py-2 bg-dark-surface text-gray-300 text-sm rounded-md hover:bg-dark-hover transition-colors border border-gray-700 flex items-center gap-2"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+                Check Completeness
+            </button>
+        </div>
+    </div>
+    {% endif %}
+    
     <!-- Tracklist -->
     <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-800">
