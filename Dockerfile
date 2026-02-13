@@ -32,6 +32,7 @@ COPY --from=builder /root/.local /home/spotiflac/.local
 
 # Copy application code
 COPY --chown=spotiflac:spotiflac app/ ./app/
+COPY --chown=spotiflac:spotiflac migrations/ ./migrations/
 COPY --chown=spotiflac:spotiflac requirements.txt .
 
 # Create necessary directories
