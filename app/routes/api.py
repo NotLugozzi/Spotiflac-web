@@ -16,6 +16,7 @@ from app.models import Artist, Album, Track, Download, DownloadStatus, LibrarySc
 from app.services.spotify_service import get_spotify_service
 from app.services.library_scanner import get_library_scanner
 from app.services.download_manager import get_download_manager
+from app.services.metadata_service import get_metadata_service
 from app.services.url_parser import (
     parse_spotify_url, 
     parse_multiple_urls, 
@@ -132,6 +133,20 @@ class SearchRequest(BaseModel):
 class SettingsUpdate(BaseModel):
     key: str
     value: str
+
+
+class AlbumMetadataFixRequest(BaseModel):
+    album_artist: str
+    album_name: Optional[str] = None
+
+
+class TrackMetadataFixRequest(BaseModel):
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    albumartist: Optional[str] = None
+    track_number: Optional[int] = None
+    disc_number: Optional[int] = None
 
 
 # ============================================================================
@@ -550,6 +565,202 @@ async def check_all_albums_completeness(
     else:
         results = run_check()
         return results
+
+
+# ============================================================================
+# Metadata Fix Endpoints
+# ============================================================================
+
+@router.get("/albums/{album_id}/metadata-preview")
+async def preview_album_metadata(
+    album_id: int,
+    db: Session = Depends(get_db)
+):
+    """Preview current metadata for local tracks in an album."""
+    album = db.query(Album).filter(Album.id == album_id).first()
+    if not album:
+        raise HTTPException(status_code=404, detail="Album not found")
+
+    metadata_service = get_metadata_service()
+    preview_tracks = []
+    unique_album_artists = set()
+
+    for track in sorted(album.tracks, key=lambda t: (t.disc_number or 1, t.track_number or 0, t.id)):
+        if not track.local_path:
+            continue
+
+        metadata = metadata_service.read_metadata(track.local_path)
+        if not metadata:
+            continue
+
+        album_artist_value = metadata.get("albumartist")
+        if album_artist_value:
+            unique_album_artists.add(album_artist_value)
+
+        preview_tracks.append({
+            "track_id": track.id,
+            "track_name": track.name,
+            "local_path": track.local_path,
+            "metadata": {
+                "title": metadata.get("title"),
+                "artist": metadata.get("artist"),
+                "album": metadata.get("album"),
+                "albumartist": album_artist_value,
+                "track_number": metadata.get("track_number"),
+                "disc_number": metadata.get("disc_number"),
+            }
+        })
+
+    suggested_album_artist = (
+        album.artist.name if album.artist and album.artist.name
+        else (next(iter(unique_album_artists)) if unique_album_artists else None)
+    )
+
+    return {
+        "album_id": album.id,
+        "album_name": album.name,
+        "track_count": len(preview_tracks),
+        "unique_album_artists": sorted(unique_album_artists),
+        "suggested_album_artist": suggested_album_artist,
+        "tracks": preview_tracks,
+    }
+
+
+@router.post("/albums/{album_id}/metadata/fix")
+async def fix_album_metadata(
+    album_id: int,
+    request: AlbumMetadataFixRequest,
+    db: Session = Depends(get_db)
+):
+    """Apply album-level metadata fixes to all local tracks in an album."""
+    album = db.query(Album).filter(Album.id == album_id).first()
+    if not album:
+        raise HTTPException(status_code=404, detail="Album not found")
+
+    album_artist = (request.album_artist or "").strip()
+    album_name = (request.album_name or "").strip() if request.album_name is not None else None
+
+    if not album_artist:
+        raise HTTPException(status_code=400, detail="album_artist is required")
+
+    metadata_service = get_metadata_service()
+    updated = 0
+    failed = []
+
+    for track in album.tracks:
+        if not track.local_path:
+            continue
+
+        write_payload = {"albumartist": album_artist}
+        if album_name:
+            write_payload["album"] = album_name
+
+        success = metadata_service.write_metadata(track.local_path, write_payload)
+        if success:
+            updated += 1
+        else:
+            failed.append({"track_id": track.id, "track_name": track.name})
+
+    if album_name:
+        album.name = album_name
+
+    db.commit()
+
+    return {
+        "status": "ok",
+        "updated_tracks": updated,
+        "failed_tracks": failed,
+        "album_artist": album_artist,
+        "album_name": album_name or album.name,
+    }
+
+
+@router.get("/tracks/{track_id}/metadata-preview")
+async def preview_track_metadata(
+    track_id: int,
+    db: Session = Depends(get_db)
+):
+    """Preview current metadata for one local track."""
+    track = db.query(Track).filter(Track.id == track_id).first()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    if not track.local_path:
+        raise HTTPException(status_code=400, detail="Track has no local file")
+
+    metadata_service = get_metadata_service()
+    metadata = metadata_service.read_metadata(track.local_path)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Track metadata could not be read")
+
+    return {
+        "track_id": track.id,
+        "track_name": track.name,
+        "album_id": track.album_id,
+        "local_path": track.local_path,
+        "metadata": {
+            "title": metadata.get("title"),
+            "artist": metadata.get("artist"),
+            "album": metadata.get("album"),
+            "albumartist": metadata.get("albumartist"),
+            "track_number": metadata.get("track_number"),
+            "disc_number": metadata.get("disc_number"),
+        }
+    }
+
+
+@router.post("/tracks/{track_id}/metadata/fix")
+async def fix_track_metadata(
+    track_id: int,
+    request: TrackMetadataFixRequest,
+    db: Session = Depends(get_db)
+):
+    """Apply metadata fixes to one local track."""
+    track = db.query(Track).filter(Track.id == track_id).first()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    if not track.local_path:
+        raise HTTPException(status_code=400, detail="Track has no local file")
+
+    write_payload = {}
+
+    if request.title is not None and request.title.strip():
+        write_payload["title"] = request.title.strip()
+    if request.artist is not None and request.artist.strip():
+        write_payload["artist"] = request.artist.strip()
+    if request.album is not None and request.album.strip():
+        write_payload["album"] = request.album.strip()
+    if request.albumartist is not None and request.albumartist.strip():
+        write_payload["albumartist"] = request.albumartist.strip()
+    if request.track_number is not None and request.track_number > 0:
+        write_payload["track_number"] = request.track_number
+    if request.disc_number is not None and request.disc_number > 0:
+        write_payload["disc_number"] = request.disc_number
+
+    if not write_payload:
+        raise HTTPException(status_code=400, detail="No metadata fields to update")
+
+    metadata_service = get_metadata_service()
+    success = metadata_service.write_metadata(track.local_path, write_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to write metadata")
+
+    if "title" in write_payload:
+        track.name = write_payload["title"]
+    if "track_number" in write_payload:
+        track.track_number = write_payload["track_number"]
+    if "disc_number" in write_payload:
+        track.disc_number = write_payload["disc_number"]
+
+    db.commit()
+
+    return {
+        "status": "ok",
+        "track_id": track.id,
+        "updated_fields": list(write_payload.keys()),
+        "track": track.to_dict(),
+    }
 
 
 # ============================================================================

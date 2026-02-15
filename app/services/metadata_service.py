@@ -58,7 +58,7 @@ class MetadataService:
             "title": get_first(audio.get("title")),
             "artist": get_first(audio.get("artist")),
             "album": get_first(audio.get("album")),
-            "albumartist": get_first(audio.get("albumartist") or audio.get("album artist")),
+            "albumartist": get_first(audio.get("albumartist") or audio.get("album artist") or audio.get("band")),
             "track_number": None,
             "disc_number": None,
             "year": get_first(audio.get("date") or audio.get("year")),
@@ -169,8 +169,18 @@ class MetadataService:
             # Handle disc number
             if "disc_number" in metadata and metadata["disc_number"]:
                 audio["discnumber"] = str(metadata["disc_number"])
-            
+
             audio.save()
+
+            # Keep Vorbis BAND aligned with album artist where available
+            if "albumartist" in metadata and metadata["albumartist"]:
+                full_audio = MutagenFile(file_path)
+                if full_audio is not None and getattr(full_audio, "tags", None) is not None:
+                    format_name = type(full_audio).__name__.lower()
+                    if "flac" in format_name or "ogg" in format_name or "opus" in format_name:
+                        full_audio.tags["BAND"] = [str(metadata["albumartist"])]
+                        full_audio.save()
+
             logger.info(f"Successfully wrote metadata to {file_path}")
             return True
         except Exception as e:
