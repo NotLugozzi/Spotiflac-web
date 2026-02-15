@@ -19,6 +19,7 @@ import shutil
 import sys
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
+from mutagen import File as MutagenFile
 
 from sqlalchemy.orm import Session
 
@@ -982,7 +983,7 @@ class DownloadManager:
         elif 'downloading' in line.lower() or 'searching' in line.lower():
             logger.debug(f"[PARSER] Activity line (no match): {line[:100]}")
     
-    def _execute_spotiflac(self, task: DownloadTask) -> bool:
+    def _execute_spotiflac(self, task: DownloadTask) -> DownloadResult:
         """
         Execute SpotiFLAC to download an album.
         
@@ -990,7 +991,7 @@ class DownloadManager:
             task: Download task to execute
             
         Returns:
-            True if successful
+            DownloadResult with success status and error information
         """
         spotiflac_available = False
         try:
@@ -1020,6 +1021,10 @@ class DownloadManager:
         # Create m3u playlist if this is a playlist download and it succeeded
         if result.success:
             parsed_url = parse_spotify_url(task.spotify_url)
+
+            if parsed_url.url_type != SpotifyUrlType.PLAYLIST:
+                self._normalize_album_artist_tags(task)
+
             if parsed_url.url_type == SpotifyUrlType.PLAYLIST:
                 logger.info("Detected playlist download, attempting to create m3u file")
                 # For playlists, use the output_path directly (no album subfolders)
@@ -1045,7 +1050,73 @@ class DownloadManager:
         except Exception as e:
             logger.error(f"Failed to update download error: {e}")
         
-        return result.success
+        return result
+
+    def _normalize_album_artist_tags(self, task: DownloadTask) -> None:
+        """Ensure all downloaded tracks share a consistent album artist tag."""
+        album_artist = (task.artist_name or "").strip()
+        if not album_artist:
+            logger.debug(f"Skipping album artist normalization for {task.download_id}: no artist name")
+            return
+
+        target_dir = self._get_expected_download_dir(task)
+        if not target_dir or not os.path.exists(target_dir):
+            target_dir = task.output_path
+
+        if not target_dir or not os.path.exists(target_dir):
+            logger.warning(
+                f"Skipping album artist normalization for {task.download_id}: directory not found ({target_dir})"
+            )
+            return
+
+        audio_files = self._get_audio_files(target_dir)
+        if not audio_files:
+            logger.warning(f"No audio files found for album artist normalization in {target_dir}")
+            return
+
+        updated_count = 0
+        failed_count = 0
+
+        for file_path in sorted(audio_files):
+            try:
+                if self._set_album_artist_tag(file_path, album_artist):
+                    updated_count += 1
+            except Exception as e:
+                failed_count += 1
+                logger.warning(f"Failed to normalize album artist for {file_path}: {e}")
+
+        logger.info(
+            f"Album artist normalization complete for download {task.download_id}: "
+            f"updated={updated_count}, failed={failed_count}, album_artist='{album_artist}'"
+        )
+
+    def _set_album_artist_tag(self, file_path: str, album_artist: str) -> bool:
+        """Set ALBUMARTIST (and BAND for Vorbis-compatible tags) on one audio file."""
+        changed = False
+
+        audio_easy = MutagenFile(file_path, easy=True)
+        if audio_easy is None:
+            return False
+
+        existing_album_artist = audio_easy.get("albumartist") or []
+        desired_value = [str(album_artist)]
+
+        if existing_album_artist != desired_value:
+            audio_easy["albumartist"] = desired_value
+            audio_easy.save()
+            changed = True
+
+        audio_full = MutagenFile(file_path)
+        if audio_full is not None and getattr(audio_full, "tags", None) is not None:
+            format_name = type(audio_full).__name__.lower()
+            if "flac" in format_name or "ogg" in format_name or "opus" in format_name:
+                existing_band = audio_full.tags.get("BAND") or audio_full.tags.get("band") or []
+                if existing_band != desired_value:
+                    audio_full.tags["BAND"] = desired_value
+                    audio_full.save()
+                    changed = True
+
+        return changed
     
     def _execute_spotiflac_module(self, task: DownloadTask) -> DownloadResult:
         """Execute SpotiFLAC as Python module and capture output."""
