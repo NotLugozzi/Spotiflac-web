@@ -19,7 +19,7 @@ services:
       
       - DATABASE_URL=sqlite:///./data/spotiflac.db
       
-      - SPOTIFLAC_SERVICE=${SPOTIFLAC_SERVICE:qobuz,tidal,deezer}
+      - SPOTIFLAC_SERVICE=${SPOTIFLAC_SERVICE:-qobuz,tidal,deezer}
       - SPOTIFLAC_RETRY_MINUTES=${SPOTIFLAC_RETRY_MINUTES:-30}
       - SCAN_INTERVAL_MINUTES=${SCAN_INTERVAL_MINUTES:-60}
       - AUTO_SCAN_ON_STARTUP=${AUTO_SCAN_ON_STARTUP:-true}
