@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Discovery - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex justify-between items-start mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-white mb-2">Discovery</h1>
+            <p class="text-gray-400">Browse curated community playlists to add to your collection.</p>
+        </div>
+        {% if spotify_configured %}
+        <button onclick="document.getElementById('customize-modal').classList.remove('hidden')" class="px-4 py-2 bg-dark-card border border-gray-700 rounded-lg text-white hover:bg-gray-800 transition-colors flex items-center space-x-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span>Customize</span>
+        </button>
+        {% endif %}
+    </div>
+
+    {% if not spotify_configured %}
+    <div class="bg-dark-card rounded-xl border border-yellow-800 p-8 text-center mb-8">
+        <svg class="w-16 h-16 mx-auto mb-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <h3 class="text-lg font-medium text-yellow-500 mb-2">Spotify Integration Required</h3>
+        <p class="text-gray-400 mb-4">To browse curated playlists, you need to configure your Spotify API credentials.</p>
+        <a href="/settings" class="inline-flex items-center px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-500 transition-colors">
+            Go to Settings
+        </a>
+    </div>
+    {% elif not categories %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-8 text-center mb-8">
+        <h3 class="text-lg font-medium text-gray-300 mb-2">No Curated Playlists Found</h3>
+        <p class="text-gray-500 mb-4">You have no active categories. Click Customize to add some!</p>
+        <button onclick="document.getElementById('customize-modal').classList.remove('hidden')" class="inline-flex items-center px-4 py-2 bg-spotify-green text-black font-semibold rounded-lg hover:bg-green-400 transition-colors">
+            Customize Discovery
+        </button>
+    </div>
+    {% else %}
+    
+    <!-- Category Tabs -->
+    <div class="flex overflow-x-auto border-b border-gray-800 mb-8 pb-px space-x-6">
+        {% for cat in categories %}
+        <button 
+            class="pb-3 text-sm font-medium whitespace-nowrap transition-colors tab-btn {% if cat == active_category %}text-spotify-green border-b-2 border-spotify-green{% else %}text-gray-400 hover:text-white{% endif %}"
+            hx-get="/partials/discovery/category/{{ cat | urlencode }}"
+            hx-target="#discovery-content"
+            hx-swap="innerHTML"
+            onclick="updateActiveTab(this)"
+        >
+            {{ cat }}
+        </button>
+        {% endfor %}
+    </div>
+
+    <!-- Content Grid -->
+    <div id="discovery-content" class="min-h-[400px]">
+        {% include "partials/discovery_grid.html" %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Customize Modal -->
+<div id="customize-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+    <div class="bg-dark-card border border-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="p-6 border-b border-gray-800 flex justify-between items-center">
+            <h2 class="text-xl font-bold text-white">Customize Discovery Categories</h2>
+            <button onclick="document.getElementById('customize-modal').classList.add('hidden')" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div class="p-6 overflow-y-auto flex-grow" id="categories-list">
+            <!-- Populated via JS -->
+            <div class="text-center text-gray-400 py-8">Loading configuration...</div>
+        </div>
+        <div class="p-6 border-t border-gray-800 bg-gray-900 flex justify-between">
+            <button onclick="addCategoryRow()" class="px-4 py-2 text-spotify-green hover:text-green-400 font-medium">+ Add Category</button>
+            <div class="flex space-x-3">
+                <button onclick="document.getElementById('customize-modal').classList.add('hidden')" class="px-4 py-2 text-gray-400 hover:text-white font-medium">Cancel</button>
+                <button onclick="saveCategories()" class="px-4 py-2 bg-spotify-green text-black font-bold rounded hover:bg-green-400">Save & Update</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateActiveTab(clickedBtn) {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('text-spotify-green', 'border-b-2', 'border-spotify-green');
+        btn.classList.add('text-gray-400');
+    });
+    clickedBtn.classList.remove('text-gray-400');
+    clickedBtn.classList.add('text-spotify-green', 'border-b-2', 'border-spotify-green');
+}
+
+// Modal Logic
+let currentCategories = {};
+
+// Load config when modal opens
+document.querySelector('[onclick*="customize-modal"]').addEventListener('click', () => {
+    fetch('/api/discovery/config')
+        .then(res => res.json())
+        .then(data => {
+            currentCategories = data.categories || {};
+            renderCategories();
+        })
+        .catch(err => console.error(err));
+});
+
+function renderCategories() {
+    const list = document.getElementById('categories-list');
+    list.innerHTML = '';
+    
+    if (Object.keys(currentCategories).length === 0) {
+        list.innerHTML = '<p class="text-gray-400 mb-4">No categories configured.</p>';
+        return;
+    }
+    
+    Object.entries(currentCategories).forEach(([name, search]) => {
+        list.appendChild(createRow(name, search));
+    });
+}
+
+function createRow(name = '', search = '') {
+    const div = document.createElement('div');
+    div.className = 'flex items-center space-x-3 mb-3 category-row';
+    div.innerHTML = `
+        <div class="flex-1">
+            <label class="block text-xs text-gray-500 mb-1">Tab Name (e.g. Pop)</label>
+            <input type="text" value="${escapeHTML(name)}" class="cat-name w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-spotify-green" maxlength="30">
+        </div>
+        <div class="flex-1">
+            <label class="block text-xs text-gray-500 mb-1">Spotify Search Keyword</label>
+            <input type="text" value="${escapeHTML(search)}" class="cat-search w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-spotify-green" maxlength="50">
+        </div>
+        <div class="pt-5">
+            <button onclick="this.parentElement.parentElement.remove()" class="text-red-500 hover:text-red-400 p-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
+        </div>
+    `;
+    return div;
+}
+
+function addCategoryRow() {
+    const list = document.getElementById('categories-list');
+    const maxCats = {{ max_categories|default(15) }};
+    if (list.querySelectorAll('.category-row').length >= maxCats) {
+        alert("Maximum " + maxCats + " categories allowed.");
+        return;
+    }
+    if (list.querySelector('.text-gray-400')) list.innerHTML = '';
+    list.appendChild(createRow());
+}
+
+function escapeHTML(str) {
+    return str.replace(/[&<>'"]/g, 
+        tag => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[tag] || tag)
+    );
+}
+
+function saveCategories() {
+    const rows = document.querySelectorAll('.category-row');
+    const payload = {};
+    let error = null;
+    
+    rows.forEach(row => {
+        const name = row.querySelector('.cat-name').value.trim();
+        const search = row.querySelector('.cat-search').value.trim();
+        if (!name || !search) {
+            error = "All categories must have a name and search keyword.";
+            return;
+        }
+        payload[name] = search; // Overwrites duplicates automatically (dedupe)
+    });
+    
+    if (error) return alert(error);
+    if (Object.keys(payload).length === 0) return alert("Must have at least one category.");
+    
+    fetch('/api/discovery/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({categories: payload})
+    }).then(res => {
+        if (!res.ok) throw new Error("Failed to save configuration.");
+        window.location.reload(); // Reload to show new tabs and loading state
+    }).catch(err => alert(err.message));
+}
+
+function blockPlaylist(id, category, el) {
+    el.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+    fetch('/api/discovery/block', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({playlist_id: id, category: category})
+    }).then(res => {
+        if (!res.ok) throw new Error("Failed to block playlist");
+        const card = el.closest('.playlist-card');
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300);
+    }).catch(err => {
+        alert(err.message);
+        el.innerHTML = '🚫';
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Downloads - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold">Downloads</h1>
+        
+        {% if not spotiflac_available %}
+        <span class="px-3 py-1 text-sm bg-red-600/20 text-red-400 rounded-full">
+            SpotiFLAC not available
+        </span>
+        {% endif %}
+    </div>
+    
+    <!-- Direct URL download -->
+    {% with url_compact = true %}{% include "partials/url_downloader.html" %}{% endwith %}
+
+    <!-- Active Downloads -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Queue</h2>
+            <span id="queue-count" class="text-sm text-gray-400">{{ active_downloads|length }} item{{ '' if active_downloads|length == 1 else 's' }}</span>
+        </div>
+        
+        <div class="divide-y divide-gray-800" id="download-queue-content" hx-get="/partials/download-queue" hx-trigger="every 3s, queue-changed from:body" hx-swap="innerHTML">
+            {% with downloads = active_downloads %}{% include "partials/download_queue.html" %}{% endwith %}
+        </div>
+    </div>
+
+    <!-- Download History -->
+    {% include "partials/download_history.html" %}
+
+    <!-- Per-song history (persists after files are moved to Plex etc.) -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div hx-get="/partials/track-history" hx-trigger="load" hx-swap="outerHTML"></div>
+    </div>
+</div>
+
+{% endblock %}

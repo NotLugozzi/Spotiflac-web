@@ -1,0 +1,47 @@
+{% macro duration(m) -%}
+{%- if m is none -%}?{%- elif m >= 60 -%}{{ m // 60 }}h {{ m % 60 }}m{%- else -%}{{ m }}m{%- endif -%}
+{%- endmacro %}
+{# Top-bar pill: our own download-service rate limit first, else the upstream
+   break schedule; refreshes itself #}
+<div id="break-status" class="flex items-center gap-2" hx-get="/partials/break-status" hx-trigger="every 60s" hx-swap="outerHTML">
+    {% if ours.state == 'limited' %}
+    <a href="/status" class="flex items-center px-3 py-1 text-xs bg-amber-600/20 text-amber-400 rounded-full hover:bg-amber-600/30"
+       title="The download service is rate limiting this install until {{ ours.resume_at }}. {% if brk.fresh and not brk.paused %}Its servers are open for everyone else.{% endif %} Queue waits{% if queued %} ({{ queued }} waiting){% endif %} and resumes automatically.">
+        <svg class="w-3 h-3 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+        <span class="hidden sm:inline mr-1">Rate limited · resumes in</span><span class="sm:hidden mr-1">Limited</span>{{ duration(ours.minutes) }}
+        {% if queued %}<span class="ml-1.5 px-1.5 rounded-full bg-amber-500/30">{{ queued }}</span>{% endif %}
+    </a>
+    {% elif not brk.fresh %}
+    <a href="/status" class="flex items-center px-3 py-1 text-xs bg-gray-700/60 text-gray-400 rounded-full"
+          title="Break schedule unavailable{% if brk.error %}: {{ brk.error }}{% endif %}. Downloads are not being paused.">
+        <span class="w-1.5 h-1.5 mr-1.5 bg-gray-500 rounded-full"></span>
+        <span class="hidden sm:inline">Server status unknown</span>
+    </a>
+    {% elif brk.paused %}
+    <a href="/status" class="flex items-center px-3 py-1 text-xs bg-amber-600/20 text-amber-400 rounded-full hover:bg-amber-600/30"
+       title="{% if brk.on_break %}Scheduled break on the download servers{% else %}Download servers unavailable{% endif %}. {% if brk.gating_enabled %}Queue paused{% if queued %} ({{ queued }} waiting){% endif %}; it resumes automatically.{% endif %}">
+        <svg class="w-3 h-3 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+        {% if brk.on_break %}
+        <span class="hidden sm:inline mr-1">Break · resumes in</span><span class="sm:hidden mr-1">Break</span>{{ duration(brk.remaining_minutes) }}
+        {% else %}
+        <span>Servers down</span>
+        {% endif %}
+        {% if brk.gating_enabled and queued %}<span class="ml-1.5 px-1.5 rounded-full bg-amber-500/30">{{ queued }}</span>{% endif %}
+    </a>
+    {% else %}
+    <a href="/status" class="flex items-center px-3 py-1 text-xs bg-spotify-green/20 text-spotify-green rounded-full hover:bg-spotify-green/30"
+          title="Download window open{% if brk.break_at %}; next scheduled break at {{ brk.break_at[11:19] }} UTC, running jobs stop at {{ brk.stop_at[11:19] }} UTC{% elif brk.remaining_minutes is not none %}; next scheduled break in {{ duration(brk.remaining_minutes) }}{% endif %}.">
+        <span class="w-1.5 h-1.5 mr-1.5 bg-spotify-green rounded-full"></span>
+        <span class="hidden sm:inline mr-1">Downloads open{% if brk.remaining_minutes is not none %} · break in{% endif %}</span>
+        {% if brk.seconds_to_break is not none %}{{ duration(brk.seconds_to_break // 60) }}{% elif brk.remaining_minutes is not none %}{{ duration(brk.remaining_minutes) }}{% endif %}
+    </a>
+    {% endif %}
+    {% if cooldowns %}
+    {# A skipped provider doesn't stop the queue: a small note next to the pill #}
+    <a href="/status" class="flex items-center px-2 py-1 text-xs bg-amber-600/10 text-amber-400/90 rounded-full hover:bg-amber-600/20"
+       title="{% for c in cooldowns %}{{ c.name }} is skipped until {{ c.resume_at }} ({{ c.reason }}). {% endfor %}Jobs keep downloading with the other providers. Settings → Maintenance can clear it.">
+        <span class="w-1.5 h-1.5 mr-1.5 bg-amber-400 rounded-full"></span>
+        <span class="hidden sm:inline mr-1">{{ cooldowns[0].name }} skipped ·</span>{{ duration(cooldowns[0].minutes) }}
+    </a>
+    {% endif %}
+</div>

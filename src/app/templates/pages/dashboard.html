@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Spotiflac web{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold">Dashboard</h1>
+        {% include "partials/dashboard_badges.html" %}
+    </div>
+    
+    {% include "partials/dashboard_stats.html" %}
+
+    <!-- Active Downloads: appears/disappears on its own -->
+    {% include "partials/active_downloads_card.html" %}
+    
+    <!-- Recent Albums -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Recently Added</h2>
+            <a href="/albums?filter=owned" class="text-sm text-gray-400 hover:text-white">View all</a>
+        </div>
+        
+        {% if recent_albums %}
+        <div class="p-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                {% for album in recent_albums %}
+                <a href="/albums/{{ album.id }}" class="group">
+                    <div class="aspect-square bg-dark-surface rounded-lg overflow-hidden shadow-lg group-hover:shadow-xl transition-all duration-200">
+                        {% if album.image_url %}
+                        <img src="{{ album.image_url }}" alt="{{ album.name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200">
+                        {% else %}
+                        <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                            <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+                            </svg>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="mt-2">
+                        <p class="text-sm font-medium truncate group-hover:text-white transition-colors">{{ album.name }}</p>
+                        <p class="text-xs text-gray-400 truncate">{{ album.artist.name if album.artist else 'Unknown Artist' }}</p>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-gray-400">
+            <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+            </svg>
+            <p>No albums in your library yet.</p>
+            <p class="text-sm mt-2">Start a library scan to discover your music.</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button 
+            hx-post="/api/library/scan"
+            hx-swap="none"
+            data-success-message="Library scan started"
+            class="bg-dark-card border border-gray-800 rounded-xl p-5 text-left hover:bg-dark-hover transition-colors group"
+        >
+            <div class="flex items-center space-x-4">
+                <div class="p-3 bg-blue-600/20 rounded-lg group-hover:bg-blue-600/30 transition-colors">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="font-medium">Scan Library</p>
+                    <p class="text-sm text-gray-400">Discover new music in your folders</p>
+                </div>
+            </div>
+        </button>
+        
+        <a href="/search" class="bg-dark-card border border-gray-800 rounded-xl p-5 text-left hover:bg-dark-hover transition-colors group">
+            <div class="flex items-center space-x-4">
+                <div class="p-3 bg-purple-600/20 rounded-lg group-hover:bg-purple-600/30 transition-colors">
+                    <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="font-medium">Search Spotify</p>
+                    <p class="text-sm text-gray-400">Find and download new music</p>
+                </div>
+            </div>
+        </a>
+        
+        <a href="/settings" class="bg-dark-card border border-gray-800 rounded-xl p-5 text-left hover:bg-dark-hover transition-colors group">
+            <div class="flex items-center space-x-4">
+                <div class="p-3 bg-gray-600/20 rounded-lg group-hover:bg-gray-600/30 transition-colors">
+                    <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="font-medium">Configure Settings</p>
+                    <p class="text-sm text-gray-400">Set up Spotify and SpotiFLAC</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+
+{% endblock %}

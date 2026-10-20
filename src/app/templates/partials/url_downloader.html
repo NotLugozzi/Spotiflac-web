@@ -1,0 +1,137 @@
+{# Direct URL download box. Full card (Search; optional url_rows) or, with
+   url_compact, one slim row for a quick paste (Downloads) #}
+    {% if url_compact %}
+    <div x-data="urlDownloader()" class="bg-dark-card rounded-xl border border-gray-800 px-3 py-2">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 shrink-0 text-spotify-green" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            <textarea
+                x-model="urls"
+                rows="1"
+                aria-label="Spotify link"
+                placeholder="Paste a Spotify link to download…"
+                @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); submitUrls(); }"
+                @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 160) + 'px'"
+                class="flex-1 min-w-0 px-3 py-1.5 bg-dark-surface border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green resize-none text-sm leading-6"
+            ></textarea>
+            <button
+                @click="submitUrls"
+                :disabled="urlCount === 0 || loading"
+                class="shrink-0 px-4 py-1.5 bg-spotify-green text-black text-sm font-medium rounded-full hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                x-text="loading ? 'Adding…' : (urlCount > 1 ? 'Add ' + urlCount : 'Add')"
+            ></button>
+        </div>
+        <p x-show="message" x-cloak x-transition class="mt-1 ml-7 text-xs" :class="messageType === 'success' ? 'text-green-400' : 'text-red-400'" x-text="message"></p>
+    </div>
+    {% else %}
+    <!-- Manual URL Input - Always shown -->
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-6">
+        <div class="flex items-center mb-4">
+            <svg class="w-6 h-6 text-spotify-green mr-2" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            <h3 class="text-lg font-medium">Direct URL Download</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">
+            Paste Spotify URLs directly to download. No API credentials required!
+            Supports albums, tracks, artists, and playlists.
+        </p>
+        <div x-data="urlDownloader()" class="space-y-4">
+            <div>
+                <textarea 
+                    x-model="urls"
+                    placeholder="Paste Spotify links, one per line (e.g. https://open.spotify.com/playlist/…)"
+                    rows="{{ url_rows|default(3) }}"
+                    @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 320) + 'px'"
+                    class="w-full px-4 py-3 bg-dark-surface border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green resize-none text-sm font-mono"
+                ></textarea>
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-400" x-text="urlCount + ' URL(s) detected'"></span>
+                <button 
+                    @click="submitUrls"
+                    :disabled="urlCount === 0 || loading"
+                    class="px-4 py-2 bg-spotify-green text-black font-medium rounded-full hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                    <svg x-show="loading" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span x-text="loading ? 'Adding...' : 'Add to Queue'"></span>
+                </button>
+            </div>
+            
+            <!-- Status Messages -->
+            <div x-show="message" x-transition class="p-3 rounded-lg text-sm" :class="messageType === 'success' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'">
+                <span x-text="message"></span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+<script>
+function urlDownloader() {
+    return {
+        urls: '',
+        loading: false,
+        message: '',
+        messageType: 'success',
+        
+        // Links split on any whitespace: one per line or several on one line
+        get links() {
+            return this.urls.split(/\s+/).map(l => l.trim())
+                .filter(l => l.includes('spotify.com/') || l.startsWith('spotify:'));
+        },
+
+        get urlCount() {
+            return this.links.length;
+        },
+        
+        async submitUrls() {
+            if (this.urlCount === 0) return;
+            
+            this.loading = true;
+            this.message = '';
+            
+            const urlList = this.links;
+            
+            try {
+                const response = await fetch('/api/downloads/urls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: urlList })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.total_queued > 0) {
+                        this.messageType = 'success';
+                        this.message = `Added ${data.total_queued} item(s) to download queue.`;
+                        if (data.total_errors > 0) {
+                            this.message += ` ${data.total_errors} URL(s) failed.`;
+                        }
+                        this.urls = '';
+                        // Lets the Downloads queue refresh right away
+                        document.body.dispatchEvent(new Event('queue-changed'));
+                    } else {
+                        this.messageType = 'error';
+                        this.message = 'No valid URLs could be processed.';
+                    }
+                } else {
+                    this.messageType = 'error';
+                    this.message = data.detail || 'Failed to add URLs to queue.';
+                }
+            } catch (error) {
+                this.messageType = 'error';
+                this.message = 'Network error. Please try again.';
+            }
+            
+            this.loading = false;
+            const shown = this.message;
+            setTimeout(() => { if (this.message === shown) this.message = ''; }, 6000);
+        }
+    };
+}
+</script>

@@ -1,0 +1,84 @@
+{# Downloads page history card (finished jobs); refreshes itself every 10 s and
+   when the queue changes #}
+<div id="download-history" class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden"
+ hx-get="/partials/download-history" hx-trigger="every 10s, queue-changed from:body" hx-swap="outerHTML">
+    <div class="px-5 py-4 border-b border-gray-800">
+        <h2 class="text-lg font-semibold">History</h2>
+    </div>
+    
+    {% if history %}
+    <div class="divide-y divide-gray-800">
+        {% for download in history %}
+        <div class="px-5 py-4 flex items-center space-x-4">
+            <!-- Album Cover -->
+            <div class="flex-shrink-0 w-12 h-12 bg-dark-surface rounded overflow-hidden">
+                {% if download.album and download.album.image_url %}
+                <img src="{{ download.album.image_url }}" alt="{{ download.album.name }}" class="w-full h-full object-cover">
+                {% elif download.image_url %}
+                <img src="{{ download.image_url }}" alt="" class="w-full h-full object-cover" loading="lazy">
+                {% else %}
+                <div class="w-full h-full album-cover-placeholder flex items-center justify-center">
+                    <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium truncate">{{ download.title or (download.album.name if download.album else 'Unknown Album') }}</p>
+                <p class="text-xs text-gray-400 truncate">{{ download.artist_name or (download.album.artist.name if download.album and download.album.artist else 'Unknown Artist') }}</p>
+            </div>
+            
+            <!-- Status -->
+            <div class="flex-shrink-0">
+                {% if download.status.value == 'completed' %}
+                <span class="flex items-center text-sm text-spotify-green">
+                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                    Completed
+                </span>
+                {% elif download.status.value == 'failed' %}
+                <span class="flex items-center text-sm text-red-400">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Failed
+                </span>
+                {% elif download.status.value == 'cancelled' %}
+                <span class="flex items-center text-sm text-gray-400">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Cancelled
+                </span>
+                {% endif %}
+            </div>
+            
+            <!-- Time -->
+            <div class="flex-shrink-0 text-xs text-gray-500">
+                {{ download.completed_at.strftime('%Y-%m-%d %H:%M') if download.completed_at else '' }}
+            </div>
+            
+            <!-- Retry button for failed -->
+            {% if download.status.value == 'failed' %}
+            <button 
+                hx-post="/api/downloads/{{ download.id }}/retry"
+                hx-swap="none"
+                hx-on::after-request="if (event.detail.successful) document.body.dispatchEvent(new Event('queue-changed'))"
+                class="flex-shrink-0 px-3 py-1 text-xs bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600/30 transition-colors"
+            >
+                Retry
+            </button>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-8 text-center text-gray-400">
+        <p>No download history</p>
+    </div>
+    {% endif %}
+</div>

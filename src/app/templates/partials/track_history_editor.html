@@ -1,0 +1,122 @@
+{# Settings: edit the download history (delete rows). Swapped in place for
+   search and paging; selection resets on every swap. #}
+<div id="th-editor" data-q="{{ q }}" data-total="{{ total }}">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <input type="search" name="q" value="{{ q }}" placeholder="Search title, artist, album, playlist..."
+               hx-get="/partials/track-history-editor" hx-trigger="input changed delay:400ms, search"
+               hx-target="#th-editor" hx-swap="outerHTML"
+               class="w-72 px-3 py-1.5 text-sm bg-dark-surface border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green">
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span id="th-selected" class="text-gray-400">0 selected</span>
+            {% if total > rows|length %}
+            <button type="button" onclick="thSelectAllMatching()" id="th-all-matching"
+                    class="px-3 py-1.5 rounded bg-dark-surface hover:bg-dark-hover text-gray-300">
+                Select all {{ total }}{% if q %} matching{% endif %}
+            </button>
+            {% endif %}
+            <button type="button" onclick="thDelete()" id="th-delete" disabled
+                    class="px-3 py-1.5 rounded bg-red-900/50 text-red-300 hover:bg-red-900/70 disabled:opacity-40 disabled:cursor-not-allowed">
+                Delete selected
+            </button>
+        </div>
+    </div>
+
+    {% if rows %}
+    <div class="border border-gray-800 rounded-lg overflow-hidden">
+        <div class="px-4 py-2 bg-dark-surface flex items-center space-x-3 text-xs text-gray-400">
+            <input type="checkbox" id="th-page" onclick="thSelectPage(this.checked)" title="Select this page"
+                   class="w-4 h-4 bg-dark-surface border-gray-700 rounded text-spotify-green focus:ring-spotify-green">
+            <span class="flex-1">Track</span>
+            <span class="hidden md:block w-56">Album / playlist</span>
+            <span class="w-24 text-right">File</span>
+            <span class="hidden sm:block w-32 text-right">First seen</span>
+            <span class="w-6"></span>
+        </div>
+        <div class="divide-y divide-gray-800 max-h-[32rem] overflow-y-auto">
+            {% for item in rows %}
+            {% set t = item.row %}
+            <label class="px-4 py-2 flex items-center space-x-3 text-sm hover:bg-dark-hover cursor-pointer">
+                <input type="checkbox" class="th-row w-4 h-4 bg-dark-surface border-gray-700 rounded text-spotify-green focus:ring-spotify-green"
+                       value="{{ t.id }}" onclick="thChanged()">
+                <span class="flex-1 min-w-0">
+                    <span class="block truncate" title="{{ t.title }}">{{ t.title or 'Unknown title' }}</span>
+                    <span class="block text-xs text-gray-400 truncate">{{ t.artists or 'Unknown artist' }}</span>
+                </span>
+                <span class="hidden md:block w-56 min-w-0 text-xs">
+                    <span class="block text-gray-300 truncate" title="{{ t.album }}">{{ t.album or '' }}</span>
+                    {% if t.playlist %}<span class="block text-gray-500 truncate">{{ t.playlist }}</span>{% endif %}
+                </span>
+                <span class="w-24 text-right">
+                    {% if item.on_disk %}
+                    <span class="px-2 py-0.5 text-xs rounded-full bg-spotify-green/15 text-spotify-green" title="{{ t.file_path }}">In downloads</span>
+                    {% else %}
+                    <span class="px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-300" title="Last saved as {{ t.file_path }}">Moved on</span>
+                    {% endif %}
+                </span>
+                <span class="hidden sm:block w-32 text-right text-xs text-gray-500">{{ t.first_seen_at.strftime('%Y-%m-%d %H:%M') if t.first_seen_at else '' }}</span>
+                <button type="button" onclick="event.preventDefault(); thDelete([{{ t.id }}])" title="Delete this entry"
+                        class="w-6 text-gray-500 hover:text-red-400">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if pages > 1 %}
+    <div class="mt-3 flex items-center justify-between text-xs text-gray-400">
+        <span>{{ total }} entr{{ 'y' if total == 1 else 'ies' }} · page {{ page }} of {{ pages }}</span>
+        <div class="space-x-2">
+            {% if page > 1 %}
+            <button hx-get="/partials/track-history-editor?q={{ q|urlencode }}&page={{ page - 1 }}" hx-target="#th-editor" hx-swap="outerHTML"
+                    class="px-3 py-1 rounded bg-dark-surface hover:bg-dark-hover">Previous</button>
+            {% endif %}
+            {% if page < pages %}
+            <button hx-get="/partials/track-history-editor?q={{ q|urlencode }}&page={{ page + 1 }}" hx-target="#th-editor" hx-swap="outerHTML"
+                    class="px-3 py-1 rounded bg-dark-surface hover:bg-dark-hover">Next</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="p-6 text-center text-sm text-gray-400">{% if q %}No entries match "{{ q }}"{% else %}The track history is empty{% endif %}</p>
+    {% endif %}
+
+    <script>
+    (function () {
+        const root = document.getElementById('th-editor');
+        let allMatching = false;
+        const boxes = () => Array.from(root.querySelectorAll('.th-row'));
+        const chosen = () => boxes().filter(b => b.checked).map(b => Number(b.value));
+        function refresh() {
+            const n = allMatching ? Number(root.dataset.total) : chosen().length;
+            root.querySelector('#th-selected').textContent =
+                allMatching ? `All ${n}${root.dataset.q ? ' matching' : ''} selected` : `${n} selected`;
+            root.querySelector('#th-delete').disabled = n === 0;
+            const page = root.querySelector('#th-page');
+            if (page) page.checked = boxes().length > 0 && boxes().every(b => b.checked);
+        }
+        window.thChanged = function () { allMatching = false; refresh(); };
+        window.thSelectPage = function (on) { allMatching = false; boxes().forEach(b => b.checked = on); refresh(); };
+        window.thSelectAllMatching = function () { allMatching = true; boxes().forEach(b => b.checked = true); refresh(); };
+        window.thDelete = async function (ids) {
+            const body = ids ? { ids } : (allMatching ? { all_matching: true, q: root.dataset.q } : { ids: chosen() });
+            const n = ids ? ids.length : (allMatching ? Number(root.dataset.total) : body.ids.length);
+            if (!n) return;
+            if (!confirm(`Delete ${n} track history entr${n === 1 ? 'y' : 'ies'}?\n\n` +
+                         'Tracks whose files are no longer in downloads/ will be downloaded again ' +
+                         'the next time a job includes them.')) return;
+            const r = await fetch('/api/track-history/delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            });
+            if (!r.ok) { alert('Delete failed: HTTP ' + r.status); return; }
+            const data = await r.json();
+            htmx.ajax('GET', '/partials/track-history-editor?q=' + encodeURIComponent(root.dataset.q),
+                      { target: '#th-editor', swap: 'outerHTML' });
+            const count = document.getElementById('history-count');
+            if (count) count.textContent = Math.max(0, Number(count.textContent) - data.deleted);
+        };
+        refresh();
+    })();
+    </script>
+</div>

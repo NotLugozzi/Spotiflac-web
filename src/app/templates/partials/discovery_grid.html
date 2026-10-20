@@ -1,0 +1,61 @@
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+    {% for playlist in playlists %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden hover:border-gray-700 transition-colors group flex flex-col h-full">
+        <div class="relative aspect-square bg-dark-surface">
+            {% if playlist.image_url %}
+            <img src="{{ playlist.image_url }}" alt="{{ playlist.name }}" class="w-full h-full object-cover">
+            {% else %}
+            <div class="w-full h-full flex items-center justify-center text-gray-600">
+                <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                </svg>
+            </div>
+            {% endif %}
+            
+            <!-- Quick actions overlay -->
+            <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                <button 
+                    hx-post="/api/downloads/url"
+                    hx-vals='{"url": "{{ playlist.spotify_url }}"}'
+                    hx-swap="none"
+                    hx-on::after-request="if(event.detail.successful) { this.disabled = true; this.classList.add('bg-green-900', 'text-green-300'); this.classList.remove('bg-spotify-green', 'text-black'); }"
+                    class="p-3 bg-spotify-green text-black rounded-full hover:scale-105 transition-transform"
+                    title="Download Playlist"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                </button>
+                <button
+                    onclick='blockPlaylist({{ playlist.id | tojson }}, {{ active_category | tojson }}, this)'
+                    class="p-3 bg-red-600 text-white rounded-full hover:scale-105 transition-transform"
+                    title="Hide Playlist (Don't show again)"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-4 flex-grow flex flex-col">
+            <h3 class="font-medium text-white mb-1 line-clamp-1" title="{{ playlist.name }}">{{ playlist.name }}</h3>
+            <p class="text-sm text-gray-400 line-clamp-1 mb-2">By {{ playlist.owner }}</p>
+            {% if playlist.description %}
+            <p class="text-xs text-gray-500 line-clamp-2 mt-auto">{{ playlist.description }}</p>
+            {% endif %}
+            <p class="text-xs text-spotify-green mt-2">{{ playlist.tracks_total }} tracks</p>
+        </div>
+    </div>
+    {% endfor %}
+    
+    {% if not playlists %}
+    <div class="col-span-full py-16 text-center">
+        <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+        <h3 class="text-lg font-medium text-gray-300 mb-2">No Playlists Configured</h3>
+        <p class="text-gray-500">Edit <code class="bg-gray-800 px-2 py-1 rounded text-sm text-spotify-green">data/curated_playlists.json</code> to add your favorite community playlist IDs to this category!</p>
+    </div>
+    {% endif %}
+</div>

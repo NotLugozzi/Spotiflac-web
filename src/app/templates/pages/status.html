@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}Status - Spotiflac web{% endblock %}
+
+{% block head %}
+<style>
+    .viz-root {
+        --surface-1: #282828;
+        --text-primary: #ffffff;
+        --text-secondary: #c3c2b7;
+        --text-muted: #898781;
+        --grid: #383835;
+        --series-1: #3987e5;  /* our download limit */
+        --series-2: #d95926;  /* download servers */
+        --series-3: #199e70;  /* Spotify API */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <div>
+        <h1 class="text-2xl font-bold">Status</h1>
+        <p class="mt-1 text-sm text-gray-400">What can hold up downloads: the public download servers, the Spotify API quota, and the download service's limit on this install.</p>
+    </div>
+
+    <div hx-get="/partials/status-summary" hx-trigger="load" hx-swap="outerHTML">
+        <div class="h-32 bg-dark-card rounded-xl border border-gray-800 animate-pulse"></div>
+    </div>
+
+    <div class="viz-root bg-dark-card rounded-xl border border-gray-800 p-5" x-data="statusChart()" x-init="load()">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+                <h2 class="font-semibold">History</h2>
+                <p class="text-xs text-gray-500">State changes, UTC. Higher is better.</p>
+            </div>
+            <div class="flex text-xs bg-dark-surface rounded-lg p-0.5" role="group" aria-label="Time range">
+                <template x-for="h in [24, 168, 720]" :key="h">
+                    <button type="button" @click="hours = h; load()"
+                            class="px-3 py-1 rounded-md transition-colors"
+                            :class="hours === h ? 'bg-dark-hover text-white' : 'text-gray-400 hover:text-white'"
+                            x-text="h === 24 ? '24h' : (h / 24) + 'd'"></button>
+                </template>
+            </div>
+        </div>
+        <div class="relative" x-ref="wrap" @pointerleave="hide()">
+            <svg x-ref="svg" class="block w-full select-none" role="img" aria-label="State history of the three components"></svg>
+            <div x-ref="tip" x-cloak x-show="tip" class="absolute z-10 pointer-events-none px-3 py-2 text-xs bg-dark-surface border border-gray-700 rounded-lg shadow-lg"
+                 style="min-width: 11rem"></div>
+        </div>
+        <p x-show="empty" x-cloak class="mt-2 text-sm text-gray-500">No history yet: the first states are recorded within a minute of startup.</p>
+    </div>
+
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-5" x-data="{ all: false }">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold">Recent events</h2>
+            <button type="button" id="events-toggle" @click="all = !all" class="hidden text-xs text-gray-400 hover:text-white"
+                    x-text="all ? 'Show fewer' : 'Show all'"></button>
+        </div>
+        <ol id="events" class="space-y-1 text-sm" :class="all ? 'show-all' : ''"></ol>
+        <p id="events-empty" class="hidden text-sm text-gray-500">No state changes in this period.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    #events:not(.show-all) li.extra { display: none; }
+</style>
+<script>
+const COMPONENTS = [
+    { key: 'ours', name: 'Our download limit', color: 'var(--series-1)' },
+    { key: 'service', name: 'Download servers', color: 'var(--series-2)' },
+    { key: 'spotify', name: 'Spotify API', color: 'var(--series-3)' },
+];
+const STATE_LABEL = { ok: 'OK', partial: 'Partly limited', break: 'Break', limited: 'Rate limited', down: 'Down', unknown: 'Unknown' };
+const STATE_COLOR = { ok: '#0ca30c', partial: '#fab219', break: '#fab219', limited: '#d03b3b', down: '#d03b3b', unknown: '#898781' };
+const LEVEL_NAMES = ['Blocked', 'Degraded', 'OK'];
+const EVENTS_SHOWN = 8;
+const NS = 'http://www.w3.org/2000/svg';
+
+function svgEl(name, attrs, parent) {
+    const el = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    if (parent) parent.appendChild(el);
+    return el;
+}
+const parseTs = s => new Date(s).getTime();
+const fmtTime = (t, withDate) => {
+    const d = new Date(t);
+    const hm = d.toISOString().slice(11, 16);
+    return withDate ? `${d.getUTCDate()} ${d.toLocaleString('en', { month: 'short', timeZone: 'UTC' })} ${hm}` : hm;
+};
+
+function statusChart() {
+    return {
+        hours: 24, data: null, tip: false, empty: false, segs: {},
+        async load() {
+            const res = await fetch(`/api/status/history?hours=${this.hours}`);
+            this.data = await res.json();
+            this.build();
+            this.render();
+            renderEvents(this.data, this.hours);
+        },
+        // Per component: [{from, to, state}] covering the window
+        build() {
+            const d = this.data, start = parseTs(d.start), end = parseTs(d.end);
+            this.start = start; this.end = end;
+            this.empty = d.events.length === 0 && Object.values(d.initial).every(v => v === null);
+            for (const c of COMPONENTS) {
+                const segs = [];
+                let state = d.initial[c.key], t = start;
+                for (const e of d.events.filter(e => e.component === c.key)) {
+                    const at = parseTs(e.at);
+                    if (at > t) segs.push({ from: t, to: at, state });
+                    state = e.state; t = at;
+                }
+                segs.push({ from: t, to: end, state });
+                this.segs[c.key] = segs;
+            }
+        },
+        render() {
+            const svg = this.$refs.svg;
+            svg.replaceChildren();
+            const W = this.$refs.wrap.clientWidth, laneH = 54, titleH = 18, gap = 14, left = 64, right = 8, axisH = 22;
+            const H = COMPONENTS.length * (titleH + laneH + gap) + axisH;
+            svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+            svg.setAttribute('height', H);
+            const x = t => left + (t - this.start) / (this.end - this.start) * (W - left - right);
+            this.geom = { W, H, left, right, x };
+            const levels = this.data.levels;
+
+            COMPONENTS.forEach((c, i) => {
+                const top = i * (titleH + laneH + gap);
+                const y0 = top + titleH + 6, y1 = top + titleH + laneH - 6;
+                const y = lvl => y1 - (lvl / 2) * (y1 - y0);
+                // Lane title = direct label, with a line key in the series colour
+                svgEl('line', { x1: left, x2: left + 14, y1: top + 9, y2: top + 9, stroke: c.color, 'stroke-width': 2, 'stroke-linecap': 'round' }, svg);
+                const title = svgEl('text', { x: left + 20, y: top + 13, fill: 'var(--text-secondary)', 'font-size': 12 }, svg);
+                title.textContent = c.name;
+                // Recessive level grid
+                [0, 1, 2].forEach(lvl => {
+                    svgEl('line', { x1: left, x2: W - right, y1: y(lvl), y2: y(lvl), stroke: 'var(--grid)', 'stroke-width': 1, 'stroke-dasharray': lvl === 0 ? '' : '2 3' }, svg);
+                    const lbl = svgEl('text', { x: left - 8, y: y(lvl) + 3.5, fill: 'var(--text-muted)', 'font-size': 10, 'text-anchor': 'end' }, svg);
+                    lbl.textContent = LEVEL_NAMES[lvl];
+                });
+                // Step line, broken where the state is unknown
+                let d = '', prevY = null;
+                for (const s of this.segs[c.key]) {
+                    const lvl = levels[s.state];
+                    if (lvl === undefined) { prevY = null; continue; }
+                    const yy = y(lvl);
+                    d += prevY === null ? `M${x(s.from)},${yy}` : `V${yy}`;
+                    d += `H${x(s.to)}`;
+                    prevY = yy;
+                }
+                if (d) svgEl('path', { d, fill: 'none', stroke: c.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+            });
+
+            // Time axis
+            const axisY = H - axisH + 4;
+            const span = this.end - this.start;
+            const step = [3600e3, 3 * 3600e3, 6 * 3600e3, 12 * 3600e3, 24 * 3600e3, 3 * 86400e3, 7 * 86400e3]
+                .find(s => (W - left - right) / (span / s) >= 70) || 7 * 86400e3;
+            for (let t = Math.ceil(this.start / step) * step; t <= this.end; t += step) {
+                const lbl = svgEl('text', { x: x(t), y: axisY + 10, fill: 'var(--text-muted)', 'font-size': 10, 'text-anchor': 'middle' }, svg);
+                lbl.textContent = step >= 86400e3 ? new Date(t).toLocaleString('en', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : fmtTime(t);
+            }
+
+            // Crosshair + hit area covering the whole plot
+            this.cross = svgEl('line', { y1: 0, y2: H - axisH, stroke: 'var(--text-muted)', 'stroke-width': 1, visibility: 'hidden' }, svg);
+            const hit = svgEl('rect', { x: left, y: 0, width: Math.max(0, W - left - right), height: H - axisH, fill: 'transparent', tabindex: 0 }, svg);
+            hit.addEventListener('pointermove', ev => this.show(ev));
+            hit.addEventListener('focus', () => this.show(null));
+            hit.addEventListener('blur', () => this.hide());
+        },
+        stateAt(key, t) {
+            const seg = this.segs[key].find(s => t >= s.from && t <= s.to);
+            return seg ? seg.state : null;
+        },
+        show(ev) {
+            const { W, left, right } = this.geom;
+            const rect = this.$refs.svg.getBoundingClientRect();
+            const px = ev ? Math.min(Math.max(ev.clientX - rect.left, left), W - right) : W - right;
+            const t = this.start + (px - left) / (W - left - right) * (this.end - this.start);
+            this.cross.setAttribute('x1', px); this.cross.setAttribute('x2', px);
+            this.cross.setAttribute('visibility', 'visible');
+            const tip = this.$refs.tip;
+            tip.replaceChildren();
+            const head = document.createElement('div');
+            head.className = 'mb-1 text-gray-400';
+            head.textContent = fmtTime(t, this.hours > 24) + ' UTC';
+            tip.appendChild(head);
+            for (const c of COMPONENTS) {
+                const st = this.stateAt(c.key, t) || 'unknown';
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-2 py-0.5';
+                const key = document.createElement('span');
+                key.style.cssText = `display:inline-block;width:12px;height:2px;border-radius:1px;background:${c.color}`;
+                const val = document.createElement('span');
+                val.className = 'font-semibold text-white';
+                val.textContent = STATE_LABEL[st] || st;
+                const name = document.createElement('span');
+                name.className = 'text-gray-400';
+                name.textContent = c.name;
+                row.append(key, val, name);
+                tip.appendChild(row);
+            }
+            this.tip = true;
+            this.$nextTick(() => {
+                const tw = tip.offsetWidth;
+                tip.style.left = (px + 12 + tw > W ? px - 12 - tw : px + 12) + 'px';
+                tip.style.top = '8px';
+            });
+        },
+        hide() {
+            this.tip = false;
+            if (this.cross) this.cross.setAttribute('visibility', 'hidden');
+        },
+        init() {
+            let timer;
+            window.addEventListener('resize', () => {
+                clearTimeout(timer);
+                timer = setTimeout(() => this.data && this.render(), 150);
+            });
+            setInterval(() => this.load(), 60000);
+        },
+    };
+}
+
+// Newest first; only the last few shown until "Show all"
+function renderEvents(data, hours) {
+    const list = document.getElementById('events');
+    const names = { ...Object.fromEntries(COMPONENTS.map(c => [c.key, c.name])), library: 'Library check', disk: 'Disk space', cap: 'Daily cap', providers: 'Providers' };
+    const events = data.events.slice().reverse();
+    list.replaceChildren();
+    events.forEach((e, i) => {
+        const li = document.createElement('li');
+        li.className = 'flex items-baseline gap-3 py-1.5 border-b border-gray-800 last:border-0' + (i >= EVENTS_SHOWN ? ' extra' : '');
+        const time = document.createElement('span');
+        time.className = 'w-24 shrink-0 text-xs text-gray-500 tabular-nums';
+        time.textContent = fmtTime(parseTs(e.at), true);
+        const dot = document.createElement('span');
+        dot.className = 'w-2 h-2 shrink-0 rounded-full self-center';
+        dot.style.background = STATE_COLOR[e.state] || STATE_COLOR.unknown;
+        const comp = document.createElement('span');
+        comp.className = 'w-40 shrink-0 text-gray-400';
+        comp.textContent = names[e.component] || e.component;
+        const detail = document.createElement('span');
+        detail.className = 'text-gray-200 min-w-0 truncate';
+        detail.textContent = e.detail || STATE_LABEL[e.state] || e.state;
+        detail.title = detail.textContent;
+        li.append(time, dot, comp, detail);
+        list.appendChild(li);
+    });
+    document.getElementById('events-empty').classList.toggle('hidden', events.length > 0);
+    const toggle = document.getElementById('events-toggle');
+    toggle.classList.toggle('hidden', events.length <= EVENTS_SHOWN);
+    if (events.length > EVENTS_SHOWN) toggle.dataset.count = events.length;
+}
+</script>
+{% endblock %}

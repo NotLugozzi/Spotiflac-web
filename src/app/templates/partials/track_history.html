@@ -1,0 +1,103 @@
+{# Per-song download history, plus tracks skipped after failing repeatedly
+   with every provider; swapped in place for search, filter and paging.
+   Unsearched first page refreshes itself (30 s, and when the queue changes) #}
+{% set base = "/partials/track-history?show=" ~ show %}
+<div id="track-history"{% if not q and page == 1 %} hx-get="{{ base }}" hx-trigger="every 30s [document.activeElement.name !== 'q'], queue-changed from:body" hx-swap="outerHTML"{% endif %}>
+    <div class="px-5 py-4 border-b border-gray-800 flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <h2 class="text-lg font-semibold">Track History</h2>
+            <p class="text-xs text-gray-500">
+                {{ all_total }} track{{ '' if all_total == 1 else 's' }} downloaded{% if skipped_total %}, {{ skipped_total }} skipped after failing repeatedly with every provider{% endif %}. Kept after files leave the downloads folder, so they aren't downloaded again.
+            </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            {# Filter toggle #}
+            <div class="flex rounded-lg border border-gray-700 overflow-hidden text-xs">
+                {% for value, label in [('all', 'All'), ('downloaded', 'Downloaded'), ('skipped', 'Skipped / error')] %}
+                <button hx-get="/partials/track-history?show={{ value }}&q={{ q|urlencode }}" hx-target="#track-history" hx-swap="outerHTML"
+                        class="px-3 py-1.5 {% if show == value %}bg-spotify-green/20 text-spotify-green{% else %}bg-dark-surface text-gray-400 hover:bg-dark-hover{% endif %}{% if not loop.first %} border-l border-gray-700{% endif %}">
+                    {{ label }}{% if value == 'skipped' and skipped_total %} ({{ skipped_total }}){% endif %}
+                </button>
+                {% endfor %}
+            </div>
+            <input type="search" name="q" value="{{ q }}" placeholder="Search title, artist, album, playlist..."
+                   hx-get="/partials/track-history" hx-vals='{"show": "{{ show }}"}' hx-trigger="input changed delay:400ms, search"
+                   hx-target="#track-history" hx-swap="outerHTML"
+                   class="w-64 px-3 py-1.5 text-sm bg-dark-surface border border-gray-700 rounded-lg focus:outline-none focus:border-spotify-green">
+        </div>
+    </div>
+
+    {% if tracks %}
+    <div class="divide-y divide-gray-800">
+        {% for item in tracks %}
+        {% if item.skipped %}
+        {% set t = item.skipped %}
+        {% set why %}Failed {{ t.attempts }}× with every provider:{% for p, r in t.reasons.items() %}
+{{ p }}: {{ r }}{% endfor %}{% endset %}
+        <div class="px-5 py-3 flex items-center space-x-4 text-sm">
+            <div class="flex-1 min-w-0">
+                <p class="font-medium truncate text-gray-300" title="{{ t.title }}">{{ t.title or 'Unknown title' }}</p>
+                <p class="text-xs text-gray-400 truncate" title="{{ t.artists }}">{{ t.artists or 'Unknown artist' }}</p>
+            </div>
+            <div class="hidden md:block w-56 min-w-0">
+                <p class="text-xs text-gray-300 truncate" title="{{ t.album }}">{{ t.album or '' }}</p>
+                {% if t.playlist %}<p class="text-xs text-gray-500 truncate">Playlist: {{ t.playlist }}</p>{% endif %}
+            </div>
+            <div class="flex-shrink-0 w-28 text-right">
+                <span class="px-2 py-0.5 text-xs rounded-full bg-red-900/40 text-red-300 cursor-help" title="{{ why }}">Skipped</span>
+                <button hx-post="/api/track-failures/{{ t.spotify_id }}/reset" hx-swap="none"
+                        hx-on::after-request="if (event.detail.successful) document.body.dispatchEvent(new Event('queue-changed'))"
+                        class="block ml-auto mt-1 text-xs text-gray-500 hover:text-spotify-green"
+                        title="Forget the failures: the next run of a job with this track tries it again">Try again</button>
+            </div>
+            <div class="hidden sm:block flex-shrink-0 w-32 text-right text-xs text-gray-500">
+                {{ t.last_at.strftime('%Y-%m-%d %H:%M') if t.last_at else '' }}
+            </div>
+        </div>
+        {% else %}
+        {% set t = item.row %}
+        <div class="px-5 py-3 flex items-center space-x-4 text-sm">
+            <div class="flex-1 min-w-0">
+                <p class="font-medium truncate" title="{{ t.title }}">{{ t.title or 'Unknown title' }}</p>
+                <p class="text-xs text-gray-400 truncate" title="{{ t.artists }}">{{ t.artists or 'Unknown artist' }}</p>
+            </div>
+            <div class="hidden md:block w-56 min-w-0">
+                <p class="text-xs text-gray-300 truncate" title="{{ t.album }}">{{ t.album or '' }}{% if t.year %} <span class="text-gray-500">({{ t.year }})</span>{% endif %}</p>
+                {% if t.playlist %}<p class="text-xs text-gray-500 truncate">Playlist: {{ t.playlist }}</p>{% endif %}
+            </div>
+            <div class="flex-shrink-0 w-28 text-right">
+                {% if item.on_disk %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-spotify-green/15 text-spotify-green" title="{{ t.file_path }}">In downloads</span>
+                {% else %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-300" title="Last saved as {{ t.file_path }}">Moved on</span>
+                {% endif %}
+            </div>
+            <div class="hidden sm:block flex-shrink-0 w-32 text-right text-xs text-gray-500">
+                {{ t.first_seen_at.strftime('%Y-%m-%d %H:%M') if t.first_seen_at else '' }}
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    {% if pages > 1 %}
+    <div class="px-5 py-3 border-t border-gray-800 flex items-center justify-between text-xs text-gray-400">
+        <span>{{ total }} match{{ '' if total == 1 else 'es' }} · page {{ page }} of {{ pages }}</span>
+        <div class="space-x-2">
+            {% if page > 1 %}
+            <button hx-get="{{ base }}&q={{ q|urlencode }}&page={{ page - 1 }}" hx-target="#track-history" hx-swap="outerHTML"
+                    class="px-3 py-1 rounded bg-dark-surface hover:bg-dark-hover">Previous</button>
+            {% endif %}
+            {% if page < pages %}
+            <button hx-get="{{ base }}&q={{ q|urlencode }}&page={{ page + 1 }}" hx-target="#track-history" hx-swap="outerHTML"
+                    class="px-3 py-1 rounded bg-dark-surface hover:bg-dark-hover">Next</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="p-8 text-center text-gray-400">
+        <p>{% if q %}No tracks match "{{ q }}"{% elif show == 'skipped' %}No skipped tracks{% else %}No tracks recorded yet{% endif %}</p>
+    </div>
+    {% endif %}
+</div>

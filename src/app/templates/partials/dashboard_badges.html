@@ -1,0 +1,22 @@
+{# Dashboard header badges; also sent out of band with dashboard_stats #}
+        <div id="dashboard-badges" class="flex items-center space-x-2"{% if oob %} hx-swap-oob="true"{% endif %}>
+            {% if status.scanning %}
+            <span class="flex items-center px-3 py-1 text-xs bg-yellow-600/20 text-yellow-400 rounded-full">
+                <svg class="w-3 h-3 mr-1.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Scanning...
+            </span>
+            {% endif %}
+            {% if status.spotify_connected %}
+            <span class="flex items-center px-3 py-1 text-xs bg-spotify-green/20 text-spotify-green rounded-full">
+                <span class="w-1.5 h-1.5 mr-1.5 bg-spotify-green rounded-full"></span>
+                Spotify Connected
+            </span>
+            {% else %}
+            <span class="flex items-center px-3 py-1 text-xs bg-red-600/20 text-red-400 rounded-full">
+                <span class="w-1.5 h-1.5 mr-1.5 bg-red-400 rounded-full"></span>
+                Spotify Not Configured
+            </span>
+            {% endif %}
+        </div>

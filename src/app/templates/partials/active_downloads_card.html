@@ -1,0 +1,17 @@
+{# Dashboard "Active Downloads" card. Refreshes itself every 3 s; hidden
+   (no gap in the page's spacing) while nothing is queued #}
+<div id="active-downloads-slot" hx-get="/partials/active-downloads" hx-trigger="every 3s" hx-swap="outerHTML"{% if not active_downloads %} hidden{% endif %}>
+    {% if active_downloads %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 overflow-hidden" id="active-downloads-card">
+        <div class="px-5 py-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold">Active Downloads</h2>
+        </div>
+        <div class="divide-y divide-gray-800">
+            {% with downloads = active_downloads %}{% include "partials/active_downloads.html" %}{% endwith %}
+        </div>
+        <div class="px-5 py-3 bg-dark-surface">
+            <a href="/downloads" class="text-sm text-spotify-green hover:underline">View all downloads →</a>
+        </div>
+    </div>
+    {% endif %}
+</div>

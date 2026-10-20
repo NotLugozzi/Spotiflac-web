@@ -1,0 +1,51 @@
+{# Status page cards: current state + 24 h summary per component; refreshes itself #}
+{% set names = {'service': 'Download servers', 'spotify': 'Spotify API', 'ours': 'Our download limit'} %}
+{% set hints = {
+    'service': 'Public schedule, same for everyone',
+    'spotify': 'Metadata quota, per Spotify app',
+    'ours': 'Download service limit on this install',
+} %}
+{# Status colours: good / warning / critical, always with an icon and a label #}
+{% set tone = {
+    'ok': ('#0ca30c', 'M5 13l4 4L19 7'),
+    'partial': ('#fab219', 'M12 8v4m0 4h.01'),
+    'break': ('#fab219', 'M10 9v6m4-6v6'),
+    'limited': ('#d03b3b', 'M12 8v4m0 4h.01'),
+    'down': ('#d03b3b', 'M6 18L18 6M6 6l12 12'),
+    'unknown': ('#898781', 'M8.2 9a4 4 0 017.6 1.5c0 2-3 2.5-3 4.5m0 3h.01'),
+} %}
+<div id="status-summary" class="grid grid-cols-1 md:grid-cols-3 gap-4"
+     hx-get="/partials/status-summary" hx-trigger="every 60s" hx-swap="outerHTML">
+    {% for key in ['ours', 'service', 'spotify'] %}
+    {% set st = status[key] %}
+    {% set color, icon = tone.get(st.state, tone['unknown']) %}
+    {% set sm = summary[key] %}
+    <div class="bg-dark-card rounded-xl border border-gray-800 p-5">
+        <div class="flex items-start justify-between">
+            <div class="min-w-0">
+                <p class="text-sm text-gray-400">{{ names[key] }}</p>
+                <p class="flex items-center mt-1 text-lg font-semibold text-white">
+                    <span class="inline-flex items-center justify-center w-5 h-5 mr-2 rounded-full shrink-0" style="background-color: {{ color }}33">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="{{ color }}" stroke-width="3" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon }}"/>
+                        </svg>
+                    </span>
+                    {{ st.label }}
+                </p>
+                <p class="mt-1 text-sm text-gray-300">{{ st.detail }}</p>
+                {% if key == 'ours' and status.providers.cooldowns %}
+                <p class="mt-2 text-xs text-amber-400" title="Jobs keep downloading with the other providers; Settings → Maintenance can clear it">
+                    {% for c in status.providers.cooldowns %}{{ c.name }} skipped until {{ c.resume_at }} ({{ c.reason }}){{ ', ' if not loop.last }}{% endfor %}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="flex items-center justify-between pt-3 mt-4 text-xs text-gray-500 border-t border-gray-800">
+            <span title="{{ hints[key] }}">{{ hints[key] }}</span>
+            <span class="shrink-0 ml-2" title="Share of the last 24 h in the OK state, and how often it became blocked">
+                {% if sm.ok_pct is not none %}{{ sm.ok_pct }}% OK{% else %}no data{% endif %}{% if sm.incidents %} · {{ sm.incidents }}×&nbsp;blocked{% endif %}
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+</div>

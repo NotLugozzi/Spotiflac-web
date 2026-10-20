@@ -1,38 +1,26 @@
 services:
-  spotiflac-autowatcher:
-    image: ghcr.io/notlugozzi/spotiflac-web:main
+  spotiflac-web:
+    build: ./src
+    image: spotiflac-web-local
     container_name: spotiflac-web
     restart: unless-stopped
     ports:
-      - "7233:8080"
-    environment:
-      - APP_NAME=Spotiflac web
-      - APP_ENV=production
-      - DEBUG=false
-      - SECRET_KEY=
-      
-      - SPOTIFY_CLIENT_ID=
-      - SPOTIFY_CLIENT_SECRET=
-      
-      - MUSIC_LIBRARY_PATH=/music
-      - DOWNLOAD_PATH=/downloads
-      
-      - DATABASE_URL=sqlite:///./data/spotiflac.db
-      
-      - SPOTIFLAC_SERVICE=${SPOTIFLAC_SERVICE:qobuz,tidal,deezer}
-      - SPOTIFLAC_RETRY_MINUTES=${SPOTIFLAC_RETRY_MINUTES:-30}
-      - SCAN_INTERVAL_MINUTES=${SCAN_INTERVAL_MINUTES:-60}
-      - AUTO_SCAN_ON_STARTUP=${AUTO_SCAN_ON_STARTUP:-true}
-      
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - AUTH_USERNAME=${AUTH_USERNAME:-admin}
-      - AUTH_PASSWORD=${AUTH_PASSWORD:-changeme}
-
+      # Exposing the web UI on port 5900 (Accessible on LAN)
+      - "5900:8080"
+    env_file:
+      - .env
+    init: true
+    # Headless Chromium (Turnstile solver for tidal-web) needs these
+    shm_size: "2gb"
+    security_opt:
+      - seccomp:unconfined
     volumes:
+      # Database persistence
       - ./data:/app/data
-      - /music:/music:ro
-      - /downloads:/downloads
-
+      # Your downloads directory (where files arrive before you move them to Plex)
+      - ./downloads:/app/downloads
+      # Persist SpotiFLAC cached sessions/grants
+      - ./data/spotiflac_home:/home/spotiflac/.spotiflac
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
@@ -42,5 +30,6 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        # 5 GB total (50 x 100 MB), oldest file dropped first
+        max-size: "100m"
+        max-file: "50"
